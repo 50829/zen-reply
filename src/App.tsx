@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -14,6 +15,7 @@ import { useLlmStream } from "./hooks/useLlmStream";
 const CLIPBOARD_EVENT = "zenreply://clipboard-text";
 const SUCCESS_TOAST = "✅ 已复制";
 const COPY_FAIL_TOAST = "复制失败，请重试";
+const HIDE_FAIL_TOAST = "窗口关闭失败，请重试";
 
 type ClipboardPayload = {
   text: string;
@@ -67,13 +69,33 @@ function App() {
     setStage("IDLE");
   }, [clearHideTimer, resetStream, stopStream]);
 
-  const hideWindowAndReset = useCallback(async () => {
+  const forceHideWindow = useCallback(async (): Promise<boolean> => {
     try {
-      await getCurrentWindow().hide();
-    } finally {
-      resetFlow();
+      await invoke("hide_window");
+      return true;
+    } catch {
+      try {
+        await getCurrentWindow().hide();
+        return true;
+      } catch {
+        return false;
+      }
     }
-  }, [resetFlow]);
+  }, []);
+
+  const terminateSession = useCallback(async () => {
+    clearHideTimer();
+    stopStream();
+    resetStream();
+
+    const hidden = await forceHideWindow();
+    if (!hidden) {
+      setToastText(HIDE_FAIL_TOAST);
+      return;
+    }
+
+    resetFlow();
+  }, [clearHideTimer, forceHideWindow, resetFlow, resetStream, stopStream]);
 
   const onWake = useCallback(
     (incomingText: string) => {
@@ -122,12 +144,12 @@ function App() {
 
       clearHideTimer();
       hideTimerRef.current = window.setTimeout(() => {
-        void hideWindowAndReset();
+        void terminateSession();
       }, 800);
     } catch {
       setToastText(COPY_FAIL_TOAST);
     }
-  }, [clearHideTimer, hideWindowAndReset, stage, streamedText]);
+  }, [clearHideTimer, stage, streamedText, terminateSession]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -168,7 +190,7 @@ function App() {
 
       if (event.key === "Escape") {
         event.preventDefault();
-        void hideWindowAndReset();
+        void terminateSession();
         return;
       }
 
@@ -199,7 +221,7 @@ function App() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [confirmAndCopy, hideWindowAndReset, stage, startGenerating]);
+  }, [confirmAndCopy, stage, startGenerating, terminateSession]);
 
   const controlsVisible = stage === "INPUT" || stage === "IDLE";
   const resultVisible = stage === "GENERATING" || stage === "FINISHED";
@@ -310,7 +332,7 @@ function App() {
                     >
                       <button
                         type="button"
-                        onClick={() => void hideWindowAndReset()}
+                        onClick={() => void terminateSession()}
                         className="rounded-[12px] border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-zinc-200 transition hover:border-white/30"
                       >
                         Esc 取消
