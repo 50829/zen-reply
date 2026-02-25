@@ -12,9 +12,15 @@
   "app": {
     "windows": [
       {
-        "title": "tauri-app",
-        "width": 800,
-        "height": 600
+        "label": "main",
+        "title": "ZenReply",
+        "width": 600,
+        "height": 400,
+        "center": true,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "visible": false
       }
     ],
     "security": {
