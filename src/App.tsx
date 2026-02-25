@@ -18,6 +18,8 @@ const CONTEXT_TAGS = [
   { id: 4, label: "猪队友" },
 ] as const;
 
+const STREAM_SPEED_MS = 22;
+
 function App() {
   const [originalText, setOriginalText] = useState(
     "选中一段文字后按 Alt+Space 触发",
@@ -28,7 +30,9 @@ function App() {
   const [generatedText, setGeneratedText] = useState("");
   const [isGeneratePanelOpen, setIsGeneratePanelOpen] = useState(false);
   const [panelAnimateKey, setPanelAnimateKey] = useState(0);
-  const timerRef = useRef<number | null>(null);
+  const [copiedHint, setCopiedHint] = useState("");
+  const streamTimerRef = useRef<number | null>(null);
+  const hintTimerRef = useRef<number | null>(null);
 
   const selectedTagLabel = useMemo(
     () => CONTEXT_TAGS.find((tag) => tag.id === selectedTag)?.label ?? "老板",
@@ -38,45 +42,82 @@ function App() {
   const selectTag = useCallback((tagId: number) => {
     setSelectedTag(tagId);
     setIsGeneratePanelOpen(true);
-    setStage((current) => (current === "GENERATING" ? current : "INPUT"));
+    setGeneratedText("");
+    setStage("INPUT");
   }, []);
+
+  const buildMockReply = useCallback(() => {
+    const contextPart = backgroundInput.trim()
+      ? `补充背景：${backgroundInput.trim()}。`
+      : "";
+    const sourcePart = originalText.trim() ? `对方原话：${originalText.trim()}。` : "";
+
+    return `【${selectedTagLabel}风格】${contextPart}${sourcePart}建议回复：收到你的信息了，这个点我已经理解。我会先把关键目标和约束整理成一个清晰方案，今天内给你可执行版本，我们对齐后马上推进。`;
+  }, [backgroundInput, originalText, selectedTagLabel]);
 
   const startGenerate = useCallback(() => {
     if (stage === "GENERATING") {
       return;
     }
 
-    if (timerRef.current) {
-      window.clearTimeout(timerRef.current);
+    if (streamTimerRef.current) {
+      window.clearInterval(streamTimerRef.current);
     }
 
     setIsGeneratePanelOpen(true);
     setStage("GENERATING");
     setGeneratedText("");
+    setCopiedHint("");
 
-    timerRef.current = window.setTimeout(() => {
-      const optionalContext = backgroundInput.trim()
-        ? `背景：${backgroundInput.trim()}。`
-        : "";
-      const sourceText = originalText.trim() ? `原句：${originalText.trim()}。` : "";
+    const streamText = buildMockReply();
+    let index = 0;
 
-      setGeneratedText(
-        `【${selectedTagLabel}风格】${optionalContext}${sourceText}建议回复：我理解你的顾虑，这件事我来推进到可执行状态，今天内同步你清晰方案与时间点。`,
-      );
-      setStage("FINISHED");
-    }, 700);
-  }, [backgroundInput, originalText, selectedTagLabel, stage]);
+    streamTimerRef.current = window.setInterval(() => {
+      index += 1;
+      setGeneratedText(streamText.slice(0, index));
+      if (index >= streamText.length) {
+        if (streamTimerRef.current) {
+          window.clearInterval(streamTimerRef.current);
+        }
+        setStage("FINISHED");
+      }
+    }, STREAM_SPEED_MS);
+  }, [buildMockReply, stage]);
+
+  const confirmAndCopy = useCallback(async () => {
+    if (!generatedText.trim()) {
+      return;
+    }
+
+    try {
+      await invoke("copy_text_to_clipboard", { text: generatedText });
+      setCopiedHint("已复制到剪贴板，可直接 Ctrl+V");
+      if (hintTimerRef.current) {
+        window.clearTimeout(hintTimerRef.current);
+      }
+      hintTimerRef.current = window.setTimeout(() => {
+        setCopiedHint("");
+      }, 1800);
+      await invoke("hide_window");
+    } catch {
+      setCopiedHint("复制失败，请重试");
+    }
+  }, [generatedText]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let mounted = true;
 
     void listen<ClipboardPayload>(CLIPBOARD_EVENT, (event) => {
-      setOriginalText(event.payload.text || "");
+      if (streamTimerRef.current) {
+        window.clearInterval(streamTimerRef.current);
+      }
+      setOriginalText(event.payload.text?.trim() || "");
       setBackgroundInput("");
       setStage("INPUT");
       setGeneratedText("");
       setIsGeneratePanelOpen(false);
+      setCopiedHint("");
       setPanelAnimateKey((current) => current + 1);
     }).then((cleanup) => {
       if (!mounted) {
@@ -90,6 +131,12 @@ function App() {
       mounted = false;
       if (unlisten) {
         unlisten();
+      }
+      if (streamTimerRef.current) {
+        window.clearInterval(streamTimerRef.current);
+      }
+      if (hintTimerRef.current) {
+        window.clearTimeout(hintTimerRef.current);
       }
     };
   }, []);
@@ -110,6 +157,12 @@ function App() {
         return;
       }
 
+      if (event.key === "Enter" && stage === "FINISHED") {
+        event.preventDefault();
+        void confirmAndCopy();
+        return;
+      }
+
       if (event.key === "Enter" && !event.shiftKey && isGeneratePanelOpen) {
         event.preventDefault();
         if (stage !== "GENERATING") {
@@ -122,26 +175,23 @@ function App() {
 
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      if (timerRef.current) {
-        window.clearTimeout(timerRef.current);
-      }
     };
-  }, [isGeneratePanelOpen, selectTag, stage, startGenerate]);
+  }, [confirmAndCopy, isGeneratePanelOpen, selectTag, stage, startGenerate]);
 
   return (
-    <div className="flex h-full w-full items-center justify-center p-4">
+    <div className="flex h-full w-full items-center justify-center overflow-hidden p-4">
       <motion.main
         key={panelAnimateKey}
         initial={{ y: 20, opacity: 0, scale: 0.95 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
-        className="w-full max-w-[600px] rounded-2xl border border-white/10 bg-black/70 p-5 text-zinc-100 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_26px_80px_rgba(0,0,0,0.55),0_0_36px_rgba(56,189,248,0.22)]"
+        className="w-full max-w-[600px] rounded-[20px] border border-white/10 bg-black/85 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.14),inset_0_-1px_0_rgba(255,255,255,0.05),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(34,211,238,0.15)]"
       >
         <header className="mb-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">ZenReply</h1>
             <p className="mt-1 text-xs text-zinc-400">
-              Alt+Space 唤醒，Esc 隐藏，数字 1-4 快速切换身份
+              Alt+Space 自动复制选中文本并唤醒，Esc 隐藏，1-4 切换身份
             </p>
           </div>
           <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-zinc-300">
@@ -149,10 +199,10 @@ function App() {
           </span>
         </header>
 
-        <section className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+        <section className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
           <p className="mb-2 text-xs text-zinc-400">原始文本</p>
-          <p className="min-h-16 whitespace-pre-wrap text-sm leading-6 text-zinc-100">
-            {originalText || "（剪贴板为空）"}
+          <p className="zen-scrollbar max-h-24 min-h-16 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
+            {originalText || "（未捕获到选中文本，请先选中内容后按 Alt+Space）"}
           </p>
         </section>
 
@@ -184,7 +234,7 @@ function App() {
             value={backgroundInput}
             onChange={(event) => setBackgroundInput(event.currentTarget.value)}
             placeholder="对方说了什么？(可选)"
-            className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
+            className="w-full rounded-[16px] border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
           />
         </section>
 
@@ -197,35 +247,57 @@ function App() {
               transition={{ duration: 0.22, ease: "easeOut" }}
               className="mt-4 overflow-hidden"
             >
-              <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+              <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-zinc-400">生成区</p>
-                  <button
-                    type="button"
-                    onClick={startGenerate}
-                    disabled={stage === "GENERATING"}
-                    className="rounded-md border border-cyan-300/45 bg-cyan-300/20 px-2.5 py-1 text-xs text-cyan-100 transition hover:bg-cyan-300/30 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {stage === "GENERATING" ? "生成中..." : "开始生成"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={startGenerate}
+                      disabled={stage === "GENERATING"}
+                      className="rounded-md border border-cyan-300/45 bg-cyan-300/20 px-2.5 py-1 text-xs text-cyan-100 transition hover:bg-cyan-300/30 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {stage === "GENERATING" ? "生成中..." : "开始生成"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void confirmAndCopy()}
+                      disabled={stage !== "FINISHED"}
+                      className="rounded-md border border-emerald-300/45 bg-emerald-300/15 px-2.5 py-1 text-xs text-emerald-100 transition hover:bg-emerald-300/25 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      确认
+                    </button>
+                  </div>
                 </div>
 
                 {stage === "INPUT" && (
                   <p className="mt-3 text-sm text-zinc-300">
-                    当前身份「{selectedTagLabel}」。按 Enter 也可以触发生成。
+                    当前身份「{selectedTagLabel}」。按 Enter 触发预设回复生成。
                   </p>
                 )}
 
                 {stage === "GENERATING" && (
-                  <p className="mt-3 text-sm text-zinc-200 animate-pulse">
-                    正在优化语气与措辞...
-                  </p>
+                  <div className="mt-3">
+                    <p className="zen-scrollbar max-h-28 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
+                      {generatedText}
+                    </p>
+                    <p className="mt-2 text-xs text-zinc-400">正在流式生成...</p>
+                  </div>
                 )}
 
                 {stage === "FINISHED" && (
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-100">
-                    {generatedText}
-                  </p>
+                  <div className="mt-3">
+                    <p className="zen-scrollbar max-h-32 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
+                      {generatedText}
+                    </p>
+                    <p className="mt-2 text-xs text-zinc-400">
+                      Enter 可再次生成，确认后写入剪贴板。
+                    </p>
+                  </div>
+                )}
+
+                {copiedHint && (
+                  <p className="mt-2 text-xs text-emerald-200">{copiedHint}</p>
                 )}
               </div>
             </motion.section>
