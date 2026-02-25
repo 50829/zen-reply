@@ -1,126 +1,142 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { AnimatePresence, motion } from "framer-motion";
+import { buildMockReply } from "./features/zenreply/mockReplies";
+import { buildPrompt } from "./features/zenreply/prompt";
+import {
+  ROLE_OPTIONS,
+  type Stage,
+  type TargetRole,
+} from "./features/zenreply/types";
+import { useMockStream } from "./hooks/useMockStream";
 
 const CLIPBOARD_EVENT = "zenreply://clipboard-text";
+const SUCCESS_TOAST = "✅ 已复制到剪贴板";
+const COPY_FAIL_TOAST = "复制失败，请重试";
 
 type ClipboardPayload = {
   text: string;
 };
 
-type Stage = "INPUT" | "GENERATING" | "FINISHED";
-
-const CONTEXT_TAGS = [
-  { id: 1, label: "老板" },
-  { id: 2, label: "甲方" },
-  { id: 3, label: "❤️ 暧昧对象" },
-  { id: 4, label: "猪队友" },
-] as const;
-
-const STREAM_SPEED_MS = 22;
-
 function App() {
-  const [originalText, setOriginalText] = useState(
-    "选中一段文字后按 Alt+Space 触发",
-  );
-  const [selectedTag, setSelectedTag] = useState<number>(1);
-  const [backgroundInput, setBackgroundInput] = useState("");
-  const [stage, setStage] = useState<Stage>("INPUT");
-  const [generatedText, setGeneratedText] = useState("");
-  const [isGeneratePanelOpen, setIsGeneratePanelOpen] = useState(false);
+  const [stage, setStage] = useState<Stage>("IDLE");
+  const [rawText, setRawText] = useState("");
+  const [contextText, setContextText] = useState("");
+  const [targetRole, setTargetRole] = useState<TargetRole>("boss");
+  const [toastText, setToastText] = useState("");
   const [panelAnimateKey, setPanelAnimateKey] = useState(0);
-  const [copiedHint, setCopiedHint] = useState("");
-  const streamTimerRef = useRef<number | null>(null);
-  const hintTimerRef = useRef<number | null>(null);
+  const hideTimerRef = useRef<number | null>(null);
 
-  const selectedTagLabel = useMemo(
-    () => CONTEXT_TAGS.find((tag) => tag.id === selectedTag)?.label ?? "老板",
-    [selectedTag],
+  const { streamedText, isStreaming, startStream, stopStream, resetStream } =
+    useMockStream({
+      minDelayMs: 30,
+      maxDelayMs: 50,
+    });
+
+  const roleMeta = useMemo(
+    () => ROLE_OPTIONS.find((role) => role.id === targetRole) ?? ROLE_OPTIONS[0],
+    [targetRole],
   );
 
-  const selectTag = useCallback((tagId: number) => {
-    setSelectedTag(tagId);
-    setIsGeneratePanelOpen(true);
-    setGeneratedText("");
-    setStage("INPUT");
+  const stageLabel = useMemo(() => {
+    if (stage === "IDLE") return "IDLE";
+    if (stage === "INPUT") return "INPUT";
+    if (stage === "GENERATING") return "GENERATING";
+    return "FINISHED";
+  }, [stage]);
+
+  const clearHideTimer = useCallback(() => {
+    if (hideTimerRef.current) {
+      window.clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
   }, []);
 
-  const buildMockReply = useCallback(() => {
-    const contextPart = backgroundInput.trim()
-      ? `补充背景：${backgroundInput.trim()}。`
-      : "";
-    const sourcePart = originalText.trim() ? `对方原话：${originalText.trim()}。` : "";
+  const resetFlow = useCallback(() => {
+    clearHideTimer();
+    stopStream();
+    resetStream();
+    setRawText("");
+    setContextText("");
+    setTargetRole("boss");
+    setToastText("");
+    setStage("IDLE");
+  }, [clearHideTimer, resetStream, stopStream]);
 
-    return `【${selectedTagLabel}风格】${contextPart}${sourcePart}建议回复：收到你的信息了，这个点我已经理解。我会先把关键目标和约束整理成一个清晰方案，今天内给你可执行版本，我们对齐后马上推进。`;
-  }, [backgroundInput, originalText, selectedTagLabel]);
+  const hideWindowAndReset = useCallback(async () => {
+    try {
+      await getCurrentWindow().hide();
+    } finally {
+      resetFlow();
+    }
+  }, [resetFlow]);
 
-  const startGenerate = useCallback(() => {
-    if (stage === "GENERATING") {
+  const onWake = useCallback(
+    (incomingText: string) => {
+      clearHideTimer();
+      stopStream();
+      resetStream();
+      setToastText("");
+      setRawText(incomingText.trim());
+      setContextText("");
+      setStage("INPUT");
+      setPanelAnimateKey((value) => value + 1);
+    },
+    [clearHideTimer, resetStream, stopStream],
+  );
+
+  const startGenerating = useCallback(() => {
+    if (!rawText.trim()) {
+      setToastText("请先选中文本后按 Alt+Space");
       return;
     }
 
-    if (streamTimerRef.current) {
-      window.clearInterval(streamTimerRef.current);
-    }
+    const prompt = buildPrompt(rawText, targetRole, contextText);
+    const reply = buildMockReply({
+      rawText,
+      targetRole,
+      contextText,
+      prompt,
+    });
 
-    setIsGeneratePanelOpen(true);
+    setToastText("");
     setStage("GENERATING");
-    setGeneratedText("");
-    setCopiedHint("");
-
-    const streamText = buildMockReply();
-    let index = 0;
-
-    streamTimerRef.current = window.setInterval(() => {
-      index += 1;
-      setGeneratedText(streamText.slice(0, index));
-      if (index >= streamText.length) {
-        if (streamTimerRef.current) {
-          window.clearInterval(streamTimerRef.current);
-        }
+    startStream(reply, {
+      onDone: () => {
         setStage("FINISHED");
-      }
-    }, STREAM_SPEED_MS);
-  }, [buildMockReply, stage]);
+      },
+    });
+  }, [contextText, rawText, startStream, targetRole]);
 
   const confirmAndCopy = useCallback(async () => {
-    if (!generatedText.trim()) {
+    const output = streamedText.trim();
+    if (!output || stage !== "FINISHED") {
       return;
     }
 
     try {
-      await invoke("copy_text_to_clipboard", { text: generatedText });
-      setCopiedHint("已复制到剪贴板，可直接 Ctrl+V");
-      if (hintTimerRef.current) {
-        window.clearTimeout(hintTimerRef.current);
-      }
-      hintTimerRef.current = window.setTimeout(() => {
-        setCopiedHint("");
-      }, 1800);
-      await invoke("hide_window");
+      await writeText(output);
+      setToastText(SUCCESS_TOAST);
+
+      clearHideTimer();
+      hideTimerRef.current = window.setTimeout(() => {
+        void hideWindowAndReset();
+      }, 800);
     } catch {
-      setCopiedHint("复制失败，请重试");
+      setToastText(COPY_FAIL_TOAST);
     }
-  }, [generatedText]);
+  }, [clearHideTimer, hideWindowAndReset, stage, streamedText]);
 
   useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let mounted = true;
+    let unlisten: (() => void) | null = null;
+    let active = true;
 
     void listen<ClipboardPayload>(CLIPBOARD_EVENT, (event) => {
-      if (streamTimerRef.current) {
-        window.clearInterval(streamTimerRef.current);
-      }
-      setOriginalText(event.payload.text?.trim() || "");
-      setBackgroundInput("");
-      setStage("INPUT");
-      setGeneratedText("");
-      setIsGeneratePanelOpen(false);
-      setCopiedHint("");
-      setPanelAnimateKey((current) => current + 1);
+      onWake(event.payload.text || "");
     }).then((cleanup) => {
-      if (!mounted) {
+      if (!active) {
         cleanup();
         return;
       }
@@ -128,58 +144,61 @@ function App() {
     });
 
     return () => {
-      mounted = false;
+      active = false;
       if (unlisten) {
         unlisten();
       }
-      if (streamTimerRef.current) {
-        window.clearInterval(streamTimerRef.current);
-      }
-      if (hintTimerRef.current) {
-        window.clearTimeout(hintTimerRef.current);
-      }
+      clearHideTimer();
+      stopStream();
     };
-  }, []);
+  }, [clearHideTimer, onWake, stopStream]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        void invoke("hide_window");
-        return;
-      }
-
       const target = event.target as HTMLElement | null;
       const isTyping =
         target?.tagName === "INPUT" || target?.tagName === "TEXTAREA";
 
-      if (!isTyping && event.key >= "1" && event.key <= "4") {
-        selectTag(Number(event.key));
+      if (event.key === "Escape") {
+        event.preventDefault();
+        void hideWindowAndReset();
         return;
       }
 
-      if (event.key === "Enter" && stage === "FINISHED") {
-        event.preventDefault();
-        void confirmAndCopy();
+      if (!isTyping && stage === "INPUT" && event.key >= "1" && event.key <= "4") {
+        const hotkey = Number(event.key) as 1 | 2 | 3 | 4;
+        const role = ROLE_OPTIONS.find((item) => item.hotkey === hotkey);
+        if (role) {
+          setTargetRole(role.id);
+        }
         return;
       }
 
-      if (event.key === "Enter" && !event.shiftKey && isGeneratePanelOpen) {
-        event.preventDefault();
-        if (stage !== "GENERATING") {
-          startGenerate();
+      if (event.key === "Enter" && !event.shiftKey) {
+        if (stage === "INPUT") {
+          event.preventDefault();
+          startGenerating();
+          return;
+        }
+
+        if (stage === "FINISHED") {
+          event.preventDefault();
+          void confirmAndCopy();
         }
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
-
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [confirmAndCopy, isGeneratePanelOpen, selectTag, stage, startGenerate]);
+  }, [confirmAndCopy, hideWindowAndReset, stage, startGenerating]);
+
+  const controlsVisible = stage === "INPUT" || stage === "IDLE";
+  const resultVisible = stage === "GENERATING" || stage === "FINISHED";
 
   return (
-    <div className="flex h-full w-full items-center justify-center overflow-hidden p-4">
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden p-4">
       <motion.main
         key={panelAnimateKey}
         initial={{ y: 20, opacity: 0, scale: 0.95 }}
@@ -191,121 +210,140 @@ function App() {
           <div>
             <h1 className="text-xl font-semibold tracking-tight">ZenReply</h1>
             <p className="mt-1 text-xs text-zinc-400">
-              Alt+Space 自动复制选中文本并唤醒，Esc 隐藏，1-4 切换身份
+              Alt+Space 唤醒，Enter 生成/确认，Esc 取消
             </p>
           </div>
           <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-zinc-300">
-            {stage}
+            {stageLabel}
           </span>
         </header>
 
         <section className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
           <p className="mb-2 text-xs text-zinc-400">原始文本</p>
-          <p className="zen-scrollbar max-h-24 min-h-16 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
-            {originalText || "（未捕获到选中文本，请先选中内容后按 Alt+Space）"}
+          <p className="zen-scrollbar max-h-28 min-h-16 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
+            {rawText || "请在聊天框选中文本后按 Alt+Space"}
           </p>
         </section>
 
-        <section className="mt-4">
-          <p className="mb-2 text-xs text-zinc-400">沟通对象</p>
-          <div className="flex flex-wrap gap-2">
-            {CONTEXT_TAGS.map((tag) => {
-              const active = selectedTag === tag.id;
-              return (
-                <button
-                  key={tag.id}
-                  type="button"
-                  onClick={() => selectTag(tag.id)}
-                  className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                    active
-                      ? "border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
-                      : "border-white/15 bg-white/5 text-zinc-200 hover:border-white/35"
-                  }`}
-                >
-                  {tag.id}. {tag.label}
-                </button>
-              );
-            })}
-          </div>
-        </section>
+        <AnimatePresence initial={false}>
+          {controlsVisible && (
+            <motion.section
+              initial={{ height: 0, opacity: 0, y: -10 }}
+              animate={{ height: "auto", opacity: 1, y: 0 }}
+              exit={{ height: 0, opacity: 0, y: -12 }}
+              transition={{ duration: 0.24, ease: "easeOut" }}
+              className="overflow-hidden"
+            >
+              <div className="mt-4 rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
+                <p className="mb-2 text-xs text-zinc-400">沟通对象</p>
+                <div className="flex flex-wrap gap-2">
+                  {ROLE_OPTIONS.map((role) => {
+                    const active = targetRole === role.id;
+                    return (
+                      <button
+                        key={role.id}
+                        type="button"
+                        onClick={() => setTargetRole(role.id)}
+                        className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                          active
+                            ? "border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
+                            : "border-white/15 bg-white/5 text-zinc-200 hover:border-white/35"
+                        }`}
+                      >
+                        {role.hotkey}. {role.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-xs text-zinc-500">{roleMeta.vibe}</p>
 
-        <section className="mt-4">
-          <input
-            value={backgroundInput}
-            onChange={(event) => setBackgroundInput(event.currentTarget.value)}
-            placeholder="对方说了什么？(可选)"
-            className="w-full rounded-[16px] border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
-          />
-        </section>
+                <input
+                  value={contextText}
+                  onChange={(event) => setContextText(event.currentTarget.value)}
+                  placeholder="对方说了什么？(可选)"
+                  className="mt-3 w-full rounded-[16px] border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
+                />
+
+                <button
+                  type="button"
+                  onClick={startGenerating}
+                  className="mt-3 w-full rounded-[14px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25"
+                >
+                  ✨ 生成回复
+                </button>
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
 
         <AnimatePresence initial={false}>
-          {isGeneratePanelOpen && (
+          {resultVisible && (
             <motion.section
               initial={{ height: 0, opacity: 0 }}
               animate={{ height: "auto", opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
+              transition={{ duration: 0.24, ease: "easeOut" }}
               className="mt-4 overflow-hidden"
             >
               <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-zinc-400">生成区</p>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={startGenerate}
-                      disabled={stage === "GENERATING"}
-                      className="rounded-md border border-cyan-300/45 bg-cyan-300/20 px-2.5 py-1 text-xs text-cyan-100 transition hover:bg-cyan-300/30 disabled:cursor-not-allowed disabled:opacity-50"
+                <p className="mb-2 text-xs text-zinc-400">结果展示区</p>
+                <p className="zen-scrollbar max-h-40 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-7 text-zinc-100">
+                  {streamedText}
+                  {isStreaming && <span className="zen-cursor ml-1">▌</span>}
+                </p>
+
+                <AnimatePresence>
+                  {stage === "FINISHED" && (
+                    <motion.div
+                      initial={{ opacity: 0, x: 16, y: 8 }}
+                      animate={{ opacity: 1, x: 0, y: 0 }}
+                      exit={{ opacity: 0, x: 12, y: 4 }}
+                      transition={{ duration: 0.2 }}
+                      className="mt-4 flex items-center justify-end gap-2"
                     >
-                      {stage === "GENERATING" ? "生成中..." : "开始生成"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void confirmAndCopy()}
-                      disabled={stage !== "FINISHED"}
-                      className="rounded-md border border-emerald-300/45 bg-emerald-300/15 px-2.5 py-1 text-xs text-emerald-100 transition hover:bg-emerald-300/25 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      确认
-                    </button>
-                  </div>
-                </div>
-
-                {stage === "INPUT" && (
-                  <p className="mt-3 text-sm text-zinc-300">
-                    当前身份「{selectedTagLabel}」。按 Enter 触发预设回复生成。
-                  </p>
-                )}
-
-                {stage === "GENERATING" && (
-                  <div className="mt-3">
-                    <p className="zen-scrollbar max-h-28 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
-                      {generatedText}
-                    </p>
-                    <p className="mt-2 text-xs text-zinc-400">正在流式生成...</p>
-                  </div>
-                )}
-
-                {stage === "FINISHED" && (
-                  <div className="mt-3">
-                    <p className="zen-scrollbar max-h-32 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
-                      {generatedText}
-                    </p>
-                    <p className="mt-2 text-xs text-zinc-400">
-                      Enter 可再次生成，确认后写入剪贴板。
-                    </p>
-                  </div>
-                )}
-
-                {copiedHint && (
-                  <p className="mt-2 text-xs text-emerald-200">{copiedHint}</p>
-                )}
+                      <button
+                        type="button"
+                        onClick={() => void hideWindowAndReset()}
+                        className="rounded-[12px] border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-zinc-200 transition hover:border-white/30"
+                      >
+                        Esc 取消
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void confirmAndCopy()}
+                        className="rounded-[12px] border border-emerald-300/50 bg-emerald-300/20 px-3 py-1.5 text-xs font-medium text-emerald-100 transition hover:bg-emerald-300/30"
+                      >
+                        ↵ 确认并复制
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </motion.section>
           )}
         </AnimatePresence>
       </motion.main>
+
+      <AnimatePresence>
+        {toastText && (
+          <motion.div
+            initial={{ opacity: 0, y: 14, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            transition={{ duration: 0.2 }}
+            className={`pointer-events-none absolute bottom-4 rounded-[12px] border px-4 py-2 text-xs ${
+              toastText.startsWith("✅")
+                ? "border-emerald-300/45 bg-emerald-300/20 text-emerald-100"
+                : "border-rose-300/40 bg-rose-300/20 text-rose-100"
+            }`}
+          >
+            {toastText}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 export default App;
+
