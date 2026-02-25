@@ -225,133 +225,142 @@ function App() {
 
   const controlsVisible = stage === "INPUT" || stage === "IDLE";
   const resultVisible = stage === "GENERATING" || stage === "FINISHED";
+  const panelWidthClass = resultVisible
+    ? "w-[96vw] max-w-[980px]"
+    : "w-[92vw] max-w-[720px]";
 
   return (
     <div className="relative flex h-full w-full items-center justify-center overflow-hidden p-4">
-      <motion.main
+      <motion.section
         key={panelAnimateKey}
         initial={{ y: 20, opacity: 0, scale: 0.95 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
-        className="w-full max-w-[600px] rounded-[20px] border border-white/10 bg-black/85 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.14),inset_0_-1px_0_rgba(255,255,255,0.05),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(34,211,238,0.15)]"
+        className={`transition-[max-width,width] duration-300 ${panelWidthClass}`}
       >
-        <header className="mb-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">ZenReply</h1>
-            <p className="mt-1 text-xs text-zinc-400">
-              Alt+Space 唤醒，Enter 生成/确认，Esc 取消
-            </p>
-          </div>
-          <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-zinc-300">
-            {stageLabel}
-          </span>
-        </header>
-
-        <section className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
-          <p className="mb-2 text-xs text-zinc-400">原始文本</p>
-          <p className="zen-scrollbar max-h-28 min-h-16 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
-            {rawText || "请在聊天框选中文本后按 Alt+Space"}
-          </p>
-        </section>
-
-        <AnimatePresence initial={false}>
-          {controlsVisible && (
-            <motion.section
-              initial={{ height: 0, opacity: 0, y: -10 }}
-              animate={{ height: "auto", opacity: 1, y: 0 }}
-              exit={{ height: 0, opacity: 0, y: -12 }}
-              transition={{ duration: 0.24, ease: "easeOut" }}
-              className="overflow-hidden"
-            >
-              <div className="mt-4 rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
-                <p className="mb-2 text-xs text-zinc-400">沟通对象</p>
-                <div className="flex flex-wrap gap-2">
-                  {ROLE_OPTIONS.map((role) => {
-                    const active = targetRole === role.id;
-                    return (
-                      <button
-                        key={role.id}
-                        type="button"
-                        onClick={() => setTargetRole(role.id)}
-                        className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                          active
-                            ? "border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
-                            : "border-white/15 bg-white/5 text-zinc-200 hover:border-white/35"
-                        }`}
-                      >
-                        {role.hotkey}. {role.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="mt-2 text-xs text-zinc-500">{roleMeta.vibe}</p>
-
-                <input
-                  value={contextText}
-                  onChange={(event) => setContextText(event.currentTarget.value)}
-                  placeholder="对方说了什么？(可选)"
-                  className="mt-3 w-full rounded-[16px] border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
-                />
-
-                <button
-                  type="button"
-                  onClick={startGenerating}
-                  className="mt-3 w-full rounded-[14px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25"
-                >
-                  ✨ 生成回复
-                </button>
-              </div>
-            </motion.section>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence initial={false}>
-          {resultVisible && (
-            <motion.section
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.24, ease: "easeOut" }}
-              className="mt-4 overflow-hidden"
-            >
-              <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
-                <p className="mb-2 text-xs text-zinc-400">结果展示区</p>
-                <p className="zen-scrollbar max-h-40 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-7 text-zinc-100">
-                  {streamedText}
-                  {isStreaming && <span className="zen-cursor ml-1">▌</span>}
+        <div className="rounded-[24px] border border-white/30 bg-white/[0.08] p-[2px] shadow-[0_20px_70px_rgba(255,255,255,0.12)]">
+          <motion.main className="flex max-h-[86vh] w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-black/86 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.14),inset_0_-1px_0_rgba(255,255,255,0.05),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(34,211,238,0.15)]">
+            <header className="mb-4 flex shrink-0 items-center justify-between">
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight">ZenReply</h1>
+                <p className="mt-1 text-xs text-zinc-400">
+                  Alt+Space 唤醒，Enter 生成/确认，Esc 取消
                 </p>
-
-                <AnimatePresence>
-                  {stage === "FINISHED" && (
-                    <motion.div
-                      initial={{ opacity: 0, x: 16, y: 8 }}
-                      animate={{ opacity: 1, x: 0, y: 0 }}
-                      exit={{ opacity: 0, x: 12, y: 4 }}
-                      transition={{ duration: 0.2 }}
-                      className="mt-4 flex items-center justify-end gap-2"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => void terminateSession()}
-                        className="rounded-[12px] border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-zinc-200 transition hover:border-white/30"
-                      >
-                        Esc 取消
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void confirmAndCopy()}
-                        className="rounded-[12px] border border-emerald-300/50 bg-emerald-300/20 px-3 py-1.5 text-xs font-medium text-emerald-100 transition hover:bg-emerald-300/30"
-                      >
-                        ↵ 确认并复制
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
               </div>
-            </motion.section>
-          )}
-        </AnimatePresence>
-      </motion.main>
+              <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-zinc-300">
+                {stageLabel}
+              </span>
+            </header>
+
+            <div className="zen-scrollbar flex-1 overflow-y-auto pr-1">
+              <section className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
+                <p className="mb-2 text-xs text-zinc-400">原始文本</p>
+                <p className="zen-scrollbar max-h-28 min-h-16 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
+                  {rawText || "请在聊天框选中文本后按 Alt+Space"}
+                </p>
+              </section>
+
+              <AnimatePresence initial={false}>
+                {controlsVisible && (
+                  <motion.section
+                    initial={{ height: 0, opacity: 0, y: -10 }}
+                    animate={{ height: "auto", opacity: 1, y: 0 }}
+                    exit={{ height: 0, opacity: 0, y: -12 }}
+                    transition={{ duration: 0.24, ease: "easeOut" }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-4 rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
+                      <p className="mb-2 text-xs text-zinc-400">沟通对象</p>
+                      <div className="flex flex-wrap gap-2">
+                        {ROLE_OPTIONS.map((role) => {
+                          const active = targetRole === role.id;
+                          return (
+                            <button
+                              key={role.id}
+                              type="button"
+                              onClick={() => setTargetRole(role.id)}
+                              className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                                active
+                                  ? "border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
+                                  : "border-white/15 bg-white/5 text-zinc-200 hover:border-white/35"
+                              }`}
+                            >
+                              {role.hotkey}. {role.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-2 text-xs text-zinc-500">{roleMeta.vibe}</p>
+
+                      <input
+                        value={contextText}
+                        onChange={(event) => setContextText(event.currentTarget.value)}
+                        placeholder="对方说了什么？(可选)"
+                        className="mt-3 w-full rounded-[16px] border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={startGenerating}
+                        className="mt-3 w-full rounded-[14px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25"
+                      >
+                        ✨ 生成回复
+                      </button>
+                    </div>
+                  </motion.section>
+                )}
+              </AnimatePresence>
+
+              <AnimatePresence initial={false}>
+                {resultVisible && (
+                  <motion.section
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.24, ease: "easeOut" }}
+                    className="mt-4 overflow-hidden"
+                  >
+                    <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
+                      <p className="mb-2 text-xs text-zinc-400">结果展示区</p>
+                      <p className="zen-scrollbar max-h-52 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-7 text-zinc-100">
+                        {streamedText}
+                        {isStreaming && <span className="zen-cursor ml-1">▌</span>}
+                      </p>
+
+                      <AnimatePresence>
+                        {stage === "FINISHED" && (
+                          <motion.div
+                            initial={{ opacity: 0, x: 16, y: 8 }}
+                            animate={{ opacity: 1, x: 0, y: 0 }}
+                            exit={{ opacity: 0, x: 12, y: 4 }}
+                            transition={{ duration: 0.2 }}
+                            className="mt-4 flex items-center justify-end gap-2"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => void terminateSession()}
+                              className="rounded-[12px] border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-zinc-200 transition hover:border-white/30"
+                            >
+                              Esc 取消
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void confirmAndCopy()}
+                              className="rounded-[12px] border border-emerald-300/50 bg-emerald-300/20 px-3 py-1.5 text-xs font-medium text-emerald-100 transition hover:bg-emerald-300/30"
+                            >
+                              ↵ 确认并复制
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  </motion.section>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.main>
+        </div>
+      </motion.section>
 
       <AnimatePresence>
         {toastText && (

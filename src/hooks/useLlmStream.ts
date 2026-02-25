@@ -112,7 +112,12 @@ export function useLlmStream() {
       if (payload.kind === "delta") {
         const delta = payload.delta ?? "";
         if (delta) {
-          setStreamedText((current) => current + delta);
+          setStreamedText((current) => {
+            if (!current) {
+              return delta.replace(/^[\r\n]+/, "");
+            }
+            return current + delta;
+          });
         }
         return;
       }
