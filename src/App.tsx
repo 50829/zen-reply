@@ -3,17 +3,16 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { AnimatePresence, motion } from "framer-motion";
-import { buildMockReply } from "./features/zenreply/mockReplies";
 import { buildPrompt } from "./features/zenreply/prompt";
 import {
   ROLE_OPTIONS,
   type Stage,
   type TargetRole,
 } from "./features/zenreply/types";
-import { useMockStream } from "./hooks/useMockStream";
+import { useLlmStream } from "./hooks/useLlmStream";
 
 const CLIPBOARD_EVENT = "zenreply://clipboard-text";
-const SUCCESS_TOAST = "✅ 已复制到剪贴板";
+const SUCCESS_TOAST = "✅ 已复制";
 const COPY_FAIL_TOAST = "复制失败，请重试";
 
 type ClipboardPayload = {
@@ -29,11 +28,14 @@ function App() {
   const [panelAnimateKey, setPanelAnimateKey] = useState(0);
   const hideTimerRef = useRef<number | null>(null);
 
-  const { streamedText, isStreaming, startStream, stopStream, resetStream } =
-    useMockStream({
-      minDelayMs: 30,
-      maxDelayMs: 50,
-    });
+  const {
+    streamedText,
+    isStreaming,
+    streamError,
+    startStream,
+    stopStream,
+    resetStream,
+  } = useLlmStream();
 
   const roleMeta = useMemo(
     () => ROLE_OPTIONS.find((role) => role.id === targetRole) ?? ROLE_OPTIONS[0],
@@ -94,18 +96,16 @@ function App() {
     }
 
     const prompt = buildPrompt(rawText, targetRole, contextText);
-    const reply = buildMockReply({
-      rawText,
-      targetRole,
-      contextText,
-      prompt,
-    });
 
     setToastText("");
     setStage("GENERATING");
-    startStream(reply, {
+    startStream(prompt, {
       onDone: () => {
         setStage("FINISHED");
+      },
+      onError: (message) => {
+        setStage("INPUT");
+        setToastText(message);
       },
     });
   }, [contextText, rawText, startStream, targetRole]);
@@ -152,6 +152,13 @@ function App() {
       stopStream();
     };
   }, [clearHideTimer, onWake, stopStream]);
+
+  useEffect(() => {
+    if (streamError) {
+      setStage("INPUT");
+      setToastText(streamError);
+    }
+  }, [streamError]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -346,4 +353,3 @@ function App() {
 }
 
 export default App;
-
