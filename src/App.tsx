@@ -322,7 +322,7 @@ function App() {
         className={`transition-[max-width,width] duration-300 ${panelWidthClass}`}
       >
         <div className="rounded-[24px] border border-white/30 bg-white/[0.08] p-[2px] shadow-[0_20px_70px_rgba(255,255,255,0.12)]">
-          <motion.main className="flex max-h-[86vh] w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-black/86 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.14),inset_0_-1px_0_rgba(255,255,255,0.05),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(34,211,238,0.15)]">
+          <motion.main className="flex w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-black/86 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.14),inset_0_-1px_0_rgba(255,255,255,0.05),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(34,211,238,0.15)]">
             <header className="mb-4 flex shrink-0 items-center justify-between">
               <div>
                 <h1 className="text-xl font-semibold tracking-tight">ZenReply</h1>
@@ -335,10 +335,10 @@ function App() {
               </span>
             </header>
 
-            <div className="zen-scrollbar flex-1 overflow-y-auto pr-1">
+            <div className="flex-1">
               <section className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
                 <p className="mb-2 text-xs text-zinc-400">原始文本</p>
-                <p className="zen-scrollbar max-h-28 min-h-16 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
+                <p className="zen-scrollbar max-h-28 min-h-[3rem] overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
                   {rawText || "请在聊天框选中文本后按 Alt+Space"}
                 </p>
               </section>
@@ -473,7 +473,7 @@ function App() {
                   >
                     <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
                       <p className="mb-2 text-xs text-zinc-400">结果展示区</p>
-                      <p className="zen-scrollbar max-h-52 overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-7 text-zinc-100">
+                      <p className="whitespace-pre-wrap text-sm leading-7 text-zinc-100">
                         {streamedText}
                         {isStreaming && <span className="zen-cursor ml-1">▌</span>}
                       </p>
