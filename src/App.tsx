@@ -6,6 +6,8 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { AnimatePresence, motion } from "framer-motion";
 import { buildPrompt } from "./features/zenreply/prompt";
 import {
+  CUSTOM_ROLE_DEFAULT_LABEL,
+  CUSTOM_ROLE_HOTKEY,
   ROLE_OPTIONS,
   type Stage,
   type TargetRole,
@@ -26,9 +28,14 @@ function App() {
   const [rawText, setRawText] = useState("");
   const [contextText, setContextText] = useState("");
   const [targetRole, setTargetRole] = useState<TargetRole>("boss");
+  const [customRoleName, setCustomRoleName] = useState("");
+  const [customRoleDraft, setCustomRoleDraft] = useState("");
+  const [isCustomRoleEditing, setIsCustomRoleEditing] = useState(false);
   const [toastText, setToastText] = useState("");
   const [panelAnimateKey, setPanelAnimateKey] = useState(0);
   const hideTimerRef = useRef<number | null>(null);
+  const customRoleInputRef = useRef<HTMLInputElement | null>(null);
+  const previousPresetRoleRef = useRef<Exclude<TargetRole, "custom">>("boss");
 
   const {
     streamedText,
@@ -40,7 +47,7 @@ function App() {
   } = useLlmStream();
 
   const roleMeta = useMemo(
-    () => ROLE_OPTIONS.find((role) => role.id === targetRole) ?? ROLE_OPTIONS[0],
+    () => ROLE_OPTIONS.find((role) => role.id === targetRole),
     [targetRole],
   );
 
@@ -65,6 +72,10 @@ function App() {
     setRawText("");
     setContextText("");
     setTargetRole("boss");
+    setCustomRoleName("");
+    setCustomRoleDraft("");
+    setIsCustomRoleEditing(false);
+    previousPresetRoleRef.current = "boss";
     setToastText("");
     setStage("IDLE");
   }, [clearHideTimer, resetStream, stopStream]);
@@ -105,19 +116,32 @@ function App() {
       setToastText("");
       setRawText(incomingText.trim());
       setContextText("");
+      setCustomRoleDraft("");
+      setIsCustomRoleEditing(false);
       setStage("INPUT");
       setPanelAnimateKey((value) => value + 1);
     },
     [clearHideTimer, resetStream, stopStream],
   );
 
-  const startGenerating = useCallback(() => {
+  const startGenerating = useCallback((customRoleOverride?: string) => {
     if (!rawText.trim()) {
       setToastText("请先选中文本后按 Alt+Space");
       return;
     }
 
-    const prompt = buildPrompt(rawText, targetRole, contextText);
+    const customRoleFinal = (customRoleOverride ?? customRoleName).trim();
+    if (targetRole === "custom" && !customRoleFinal) {
+      setToastText("请先输入自定义对象身份");
+      return;
+    }
+
+    const prompt = buildPrompt({
+      rawText,
+      targetRole,
+      contextText,
+      customRoleInput: customRoleFinal,
+    });
 
     setToastText("");
     setStage("GENERATING");
@@ -130,7 +154,42 @@ function App() {
         setToastText(message);
       },
     });
-  }, [contextText, rawText, startStream, targetRole]);
+  }, [contextText, customRoleName, rawText, startStream, targetRole]);
+
+  const startCustomRoleEditing = useCallback(() => {
+    if (targetRole !== "custom") {
+      previousPresetRoleRef.current = targetRole;
+    }
+
+    setTargetRole("custom");
+    setCustomRoleDraft(customRoleName);
+    setIsCustomRoleEditing(true);
+    setToastText("");
+    setStage("INPUT");
+  }, [customRoleName, targetRole]);
+
+  const cancelCustomRoleEditing = useCallback(() => {
+    setIsCustomRoleEditing(false);
+    setCustomRoleDraft("");
+
+    if (!customRoleName) {
+      setTargetRole(previousPresetRoleRef.current);
+    }
+  }, [customRoleName]);
+
+  const confirmCustomRole = useCallback(() => {
+    const confirmedRole = customRoleDraft.trim();
+    if (!confirmedRole) {
+      setToastText("请输入自定义对象身份");
+      return;
+    }
+
+    setCustomRoleName(confirmedRole);
+    setTargetRole("custom");
+    setIsCustomRoleEditing(false);
+    setCustomRoleDraft(confirmedRole);
+    startGenerating(confirmedRole);
+  }, [customRoleDraft, startGenerating]);
 
   const confirmAndCopy = useCallback(async () => {
     const output = streamedText.trim();
@@ -183,6 +242,21 @@ function App() {
   }, [streamError]);
 
   useEffect(() => {
+    if (!isCustomRoleEditing) {
+      return;
+    }
+
+    const raf = window.requestAnimationFrame(() => {
+      customRoleInputRef.current?.focus();
+      customRoleInputRef.current?.select();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+    };
+  }, [isCustomRoleEditing]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const isTyping =
@@ -194,13 +268,22 @@ function App() {
         return;
       }
 
-      if (!isTyping && stage === "INPUT" && event.key >= "1" && event.key <= "4") {
-        const hotkey = Number(event.key) as 1 | 2 | 3 | 4;
-        const role = ROLE_OPTIONS.find((item) => item.hotkey === hotkey);
-        if (role) {
-          setTargetRole(role.id);
+      if (!isTyping && stage === "INPUT") {
+        if (event.key >= "1" && event.key <= "3") {
+          const hotkey = Number(event.key) as 1 | 2 | 3;
+          const role = ROLE_OPTIONS.find((item) => item.hotkey === hotkey);
+          if (role) {
+            previousPresetRoleRef.current = role.id;
+            setTargetRole(role.id);
+          }
+          return;
         }
-        return;
+
+        if (event.key === String(CUSTOM_ROLE_HOTKEY)) {
+          event.preventDefault();
+          startCustomRoleEditing();
+          return;
+        }
       }
 
       if (event.key === "Enter" && !event.shiftKey) {
@@ -221,7 +304,7 @@ function App() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [confirmAndCopy, stage, startGenerating, terminateSession]);
+  }, [confirmAndCopy, stage, startCustomRoleEditing, startGenerating, terminateSession]);
 
   const controlsVisible = stage === "INPUT" || stage === "IDLE";
   const resultVisible = stage === "GENERATING" || stage === "FINISHED";
@@ -271,14 +354,18 @@ function App() {
                   >
                     <div className="mt-4 rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
                       <p className="mb-2 text-xs text-zinc-400">沟通对象</p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {ROLE_OPTIONS.map((role) => {
                           const active = targetRole === role.id;
                           return (
                             <button
                               key={role.id}
                               type="button"
-                              onClick={() => setTargetRole(role.id)}
+                              onClick={() => {
+                                previousPresetRoleRef.current = role.id;
+                                setTargetRole(role.id);
+                                setIsCustomRoleEditing(false);
+                              }}
                               className={`rounded-full border px-3 py-1.5 text-xs transition ${
                                 active
                                   ? "border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
@@ -289,8 +376,72 @@ function App() {
                             </button>
                           );
                         })}
+
+                        <motion.div layout className="min-w-[170px] max-w-full">
+                          <AnimatePresence initial={false} mode="wait">
+                            {isCustomRoleEditing ? (
+                              <motion.input
+                                key="custom-role-input"
+                                layout
+                                ref={customRoleInputRef}
+                                autoFocus
+                                value={customRoleDraft}
+                                onChange={(event) =>
+                                  setCustomRoleDraft(event.currentTarget.value)
+                                }
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    confirmCustomRole();
+                                    return;
+                                  }
+
+                                  if (event.key === "Escape") {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    cancelCustomRoleEditing();
+                                  }
+                                }}
+                                placeholder="输入对方身份 (按 Enter 确认)"
+                                initial={{ opacity: 0, scale: 0.96 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.96 }}
+                                transition={{ duration: 0.18 }}
+                                className="w-full rounded-full border border-cyan-300/50 bg-cyan-300/15 px-3 py-1.5 text-xs text-cyan-100 outline-none placeholder:text-cyan-200/65"
+                              />
+                            ) : (
+                              <motion.button
+                                key={`custom-role-button-${customRoleName || "empty"}`}
+                                layout
+                                type="button"
+                                onClick={startCustomRoleEditing}
+                                initial={{ opacity: 0, scale: 0.96 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.96 }}
+                                transition={{ duration: 0.18 }}
+                                className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                                  targetRole === "custom"
+                                    ? "border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
+                                    : "border-white/15 bg-white/5 text-zinc-200 hover:border-white/35"
+                                }`}
+                              >
+                                {CUSTOM_ROLE_HOTKEY}.{" "}
+                                {targetRole === "custom" && customRoleName
+                                  ? customRoleName
+                                  : CUSTOM_ROLE_DEFAULT_LABEL}
+                              </motion.button>
+                            )}
+                          </AnimatePresence>
+                        </motion.div>
                       </div>
-                      <p className="mt-2 text-xs text-zinc-500">{roleMeta.vibe}</p>
+                      <p className="mt-2 text-xs text-zinc-500">
+                        {targetRole === "custom"
+                          ? customRoleName
+                            ? `已自定义对象：${customRoleName}（会自动推断权力关系与语气边界）`
+                            : "可输入任何对象身份，例如：奇葩房东、催命 HR、难缠亲戚"
+                          : roleMeta?.vibe}
+                      </p>
 
                       <input
                         value={contextText}
@@ -301,7 +452,7 @@ function App() {
 
                       <button
                         type="button"
-                        onClick={startGenerating}
+                        onClick={() => startGenerating()}
                         className="mt-3 w-full rounded-[14px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25"
                       >
                         ✨ 生成回复
