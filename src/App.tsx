@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { AnimatePresence, motion } from "framer-motion";
-import { ErrorToast } from "./components/ErrorToast";
+import { ErrorToast } from "./components/feedback/ErrorToast";
+import { ToastBar } from "./components/feedback/ToastBar";
+import { SettingsDrawer } from "./components/settings/SettingsDrawer";
+import { ResultCard } from "./components/zenreply/ResultCard";
+import { RoleComposer } from "./components/zenreply/RoleComposer";
+import { SourceTextCard } from "./components/zenreply/SourceTextCard";
 import {
   DEFAULT_SETTINGS,
   hasApiKey,
@@ -15,13 +20,16 @@ import {
 } from "./features/settings/store";
 import { buildPrompt } from "./features/zenreply/prompt";
 import {
-  CUSTOM_ROLE_DEFAULT_LABEL,
   CUSTOM_ROLE_HOTKEY,
   ROLE_OPTIONS,
+  type PresetTargetRole,
   type Stage,
   type TargetRole,
 } from "./features/zenreply/types";
+import { useAutoResizeWindow } from "./hooks/useAutoResizeWindow";
+import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useLlmStream, type LlmApiConfig } from "./hooks/useLlmStream";
+import { useTransientError } from "./hooks/useTransientError";
 
 const CLIPBOARD_EVENT = "zenreply://clipboard-text";
 const SUCCESS_TOAST = "✅ 已复制";
@@ -30,7 +38,7 @@ const HIDE_FAIL_TOAST = "窗口关闭失败，请重试";
 const SETTINGS_REQUIRED_TOAST = "请先在设置中填写 API Key";
 const MISSING_API_KEY_ERROR = "请先设置 API Key 以开启魔法。";
 const EMPTY_TEXT_ERROR = "请先选中文本后再按 Alt+Space唤起窗口。";
-const ERROR_DISPLAY_MS = 2000;
+const ERROR_DISPLAY_MS = 2_000;
 const WINDOW_FIXED_WIDTH = 600;
 const WINDOW_MIN_HEIGHT = 280;
 const WINDOW_MAX_HEIGHT = 980;
@@ -69,13 +77,9 @@ function App() {
   const [settingsDraft, setSettingsDraft] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [settingsFeedback, setSettingsFeedback] = useState("");
   const [isSettingsBusy, setIsSettingsBusy] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const hideTimerRef = useRef<number | null>(null);
-  const errorTimerRef = useRef<number | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
-  const resizeRafRef = useRef<number | null>(null);
-  const lastAppliedHeightRef = useRef(0);
-  const customRoleInputRef = useRef<HTMLInputElement | null>(null);
   const previousPresetRoleRef = useRef<Exclude<TargetRole, "custom">>("boss");
 
   const {
@@ -86,6 +90,15 @@ function App() {
     stopStream,
     resetStream,
   } = useLlmStream();
+
+  const onErrorTimeout = useCallback(() => {
+    setStage("INPUT");
+  }, []);
+
+  const { errorMessage, showError, clearError } = useTransientError({
+    displayMs: ERROR_DISPLAY_MS,
+    onTimeout: onErrorTimeout,
+  });
 
   const roleMeta = useMemo(
     () => ROLE_OPTIONS.find((role) => role.id === targetRole),
@@ -103,13 +116,6 @@ function App() {
     if (hideTimerRef.current) {
       window.clearTimeout(hideTimerRef.current);
       hideTimerRef.current = null;
-    }
-  }, []);
-
-  const clearErrorTimer = useCallback(() => {
-    if (errorTimerRef.current) {
-      window.clearTimeout(errorTimerRef.current);
-      errorTimerRef.current = null;
     }
   }, []);
 
@@ -183,15 +189,11 @@ function App() {
     }
   }, [settingsDraft]);
 
-  const showError = useCallback((message: string) => {
-    setErrorMessage(message);
-  }, []);
-
   const resetFlow = useCallback(() => {
     clearHideTimer();
-    clearErrorTimer();
     stopStream();
     resetStream();
+    clearError();
     setRawText("");
     setContextText("");
     setTargetRole("boss");
@@ -201,10 +203,9 @@ function App() {
     previousPresetRoleRef.current = "boss";
     setToastText("");
     setSettingsFeedback("");
-    setErrorMessage(null);
     setIsSettingsOpen(false);
     setStage("IDLE");
-  }, [clearErrorTimer, clearHideTimer, resetStream, stopStream]);
+  }, [clearError, clearHideTimer, resetStream, stopStream]);
 
   const forceHideWindow = useCallback(async (): Promise<boolean> => {
     try {
@@ -222,7 +223,6 @@ function App() {
 
   const terminateSession = useCallback(async () => {
     clearHideTimer();
-    clearErrorTimer();
     stopStream();
     resetStream();
 
@@ -233,15 +233,15 @@ function App() {
     }
 
     resetFlow();
-  }, [clearErrorTimer, clearHideTimer, forceHideWindow, resetFlow, resetStream, stopStream]);
+  }, [clearHideTimer, forceHideWindow, resetFlow, resetStream, stopStream]);
 
   const onWake = useCallback(
     (incomingText: string) => {
       clearHideTimer();
       stopStream();
       resetStream();
+      clearError();
       setToastText("");
-      setErrorMessage(null);
       setRawText(incomingText.trim());
       setContextText("");
       setCustomRoleDraft("");
@@ -249,7 +249,7 @@ function App() {
       setStage("INPUT");
       setPanelAnimateKey((value) => value + 1);
     },
-    [clearHideTimer, resetStream, stopStream],
+    [clearError, clearHideTimer, resetStream, stopStream],
   );
 
   const startGenerating = useCallback(async (customRoleOverride?: string) => {
@@ -296,9 +296,10 @@ function App() {
       });
 
       setToastText("");
-      setErrorMessage(null);
+      clearError();
       setIsSettingsOpen(false);
       setStage("GENERATING");
+
       startStream(prompt, {
         apiConfig,
         onDone: () => {
@@ -314,6 +315,7 @@ function App() {
       showError(toErrorMessage(error));
     }
   }, [
+    clearError,
     contextText,
     customRoleName,
     rawText,
@@ -377,6 +379,43 @@ function App() {
     }
   }, [clearHideTimer, stage, streamedText, terminateSession]);
 
+  const selectPresetRole = useCallback((role: PresetTargetRole) => {
+    previousPresetRoleRef.current = role;
+    setTargetRole(role);
+    setIsCustomRoleEditing(false);
+  }, []);
+
+  const selectRoleByHotkey = useCallback((hotkey: 1 | 2 | 3) => {
+    const role = ROLE_OPTIONS.find((item) => item.hotkey === hotkey);
+    if (role) {
+      selectPresetRole(role.id);
+    }
+  }, [selectPresetRole]);
+
+  const handleOpenSettings = useCallback(() => {
+    void openSettings();
+  }, [openSettings]);
+
+  const handleStartGenerating = useCallback(() => {
+    void startGenerating();
+  }, [startGenerating]);
+
+  const handleTerminateSession = useCallback(() => {
+    void terminateSession();
+  }, [terminateSession]);
+
+  const handleConfirmAndCopy = useCallback(() => {
+    void confirmAndCopy();
+  }, [confirmAndCopy]);
+
+  const handleSaveSettings = useCallback(() => {
+    void saveSettingsDraft();
+  }, [saveSettingsDraft]);
+
+  const handleTestApi = useCallback(() => {
+    void testApiConnection();
+  }, [testApiConnection]);
+
   useEffect(() => {
     void syncSettingsFromStore();
   }, [syncSettingsFromStore]);
@@ -406,193 +445,35 @@ function App() {
   }, [clearHideTimer, onWake, stopStream]);
 
   useEffect(() => {
-    if (streamError) {
-      setStage("INPUT");
-      showError(streamError);
+    if (!streamError) {
+      return;
     }
+    setStage("INPUT");
+    showError(streamError);
   }, [showError, streamError]);
-//TODO：窗口可变逻辑，似乎有点失败
-  useEffect(() => {
-    const appWindow = getCurrentWindow();
-    let active = true;
-    let observer: ResizeObserver | null = null;
 
-    const clearResizeRaf = () => {
-      if (resizeRafRef.current !== null) {
-        window.cancelAnimationFrame(resizeRafRef.current);
-        resizeRafRef.current = null;
-      }
-    };
+  useAutoResizeWindow({
+    panelRef,
+    triggerKey: panelAnimateKey,
+    width: WINDOW_FIXED_WIDTH,
+    minHeight: WINDOW_MIN_HEIGHT,
+    maxHeight: WINDOW_MAX_HEIGHT,
+    verticalPadding: WINDOW_VERTICAL_PADDING,
+  });
 
-    const applyWindowSize = async () => {
-      if (!active) {
-        return;
-      }
-
-      const panelHeight = panelRef.current?.getBoundingClientRect().height ?? 0;
-      if (!panelHeight) {
-        return;
-      }
-
-      const nextHeight = Math.round(
-        Math.min(
-          WINDOW_MAX_HEIGHT,
-          Math.max(WINDOW_MIN_HEIGHT, panelHeight + WINDOW_VERTICAL_PADDING),
-        ),
-      );
-
-      if (nextHeight === lastAppliedHeightRef.current) {
-        return;
-      }
-
-      lastAppliedHeightRef.current = nextHeight;
-
-      try {
-        await appWindow.setResizable(true);
-        await appWindow.setMinSize(new LogicalSize(WINDOW_FIXED_WIDTH, WINDOW_MIN_HEIGHT));
-        await appWindow.setMaxSize(new LogicalSize(WINDOW_FIXED_WIDTH, WINDOW_MAX_HEIGHT));
-        await appWindow.setSize(new LogicalSize(WINDOW_FIXED_WIDTH, nextHeight));
-      } catch {
-        // Best effort sync; window size update failure should not block UI.
-      }
-    };
-
-    const scheduleResize = () => {
-      clearResizeRaf();
-      resizeRafRef.current = window.requestAnimationFrame(() => {
-        void applyWindowSize();
-      });
-    };
-
-    scheduleResize();
-
-    if (panelRef.current && typeof ResizeObserver !== "undefined") {
-      observer = new ResizeObserver(() => {
-        scheduleResize();
-      });
-      observer.observe(panelRef.current);
-    }
-
-    return () => {
-      active = false;
-      clearResizeRaf();
-      observer?.disconnect();
-    };
-  }, [panelAnimateKey]);
-
-  useEffect(() => {
-    if (!errorMessage) {
-      clearErrorTimer();
-      return;
-    }
-
-    clearErrorTimer();
-    errorTimerRef.current = window.setTimeout(() => {
-      setErrorMessage(null);
-      setStage("INPUT");
-    }, ERROR_DISPLAY_MS);
-
-    return () => {
-      clearErrorTimer();
-    };
-  }, [clearErrorTimer, errorMessage]);
-
-  useEffect(() => {
-    if (!isCustomRoleEditing) {
-      return;
-    }
-
-    const raf = window.requestAnimationFrame(() => {
-      customRoleInputRef.current?.focus();
-      customRoleInputRef.current?.select();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(raf);
-    };
-  }, [isCustomRoleEditing]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const isTyping =
-        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA";
-
-      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
-        event.preventDefault();
-        if (isSettingsOpen) {
-          closeSettings();
-        } else {
-          void openSettings();
-        }
-        return;
-      }
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-        if (isSettingsOpen) {
-          closeSettings();
-          return;
-        }
-        void terminateSession();
-        return;
-      }
-
-      if (isSettingsOpen) {
-        return;
-      }
-
-      if (!isTyping && stage === "INPUT") {
-        if (event.key >= "1" && event.key <= "3") {
-          const hotkey = Number(event.key) as 1 | 2 | 3;
-          const role = ROLE_OPTIONS.find((item) => item.hotkey === hotkey);
-          if (role) {
-            previousPresetRoleRef.current = role.id;
-            setTargetRole(role.id);
-          }
-          return;
-        }
-
-        if (event.key === String(CUSTOM_ROLE_HOTKEY)) {
-          event.preventDefault();
-          startCustomRoleEditing();
-          return;
-        }
-      }
-
-      if (event.key === "Enter" && !event.shiftKey && !isTyping) {
-        if (stage === "INPUT") {
-          if (errorMessage) {
-            event.preventDefault();
-            return;
-          }
-          event.preventDefault();
-          void startGenerating();
-          return;
-        }
-
-        if (stage === "FINISHED") {
-          event.preventDefault();
-          void confirmAndCopy();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [
-    closeSettings,
-    confirmAndCopy,
+  useGlobalShortcuts({
     isSettingsOpen,
-    openSettings,
     stage,
-    errorMessage,
-    startCustomRoleEditing,
-    startGenerating,
-    terminateSession,
-  ]);
+    hasBlockingError: Boolean(errorMessage),
+    customRoleHotkey: CUSTOM_ROLE_HOTKEY,
+    onOpenSettings: handleOpenSettings,
+    onCloseSettings: closeSettings,
+    onTerminateSession: handleTerminateSession,
+    onSelectRoleHotkey: selectRoleByHotkey,
+    onStartCustomRoleEditing: startCustomRoleEditing,
+    onStartGenerating: handleStartGenerating,
+    onConfirmAndCopy: handleConfirmAndCopy,
+  });
 
   const controlsVisible = stage === "INPUT" || stage === "IDLE";
   const resultVisible = stage === "GENERATING" || stage === "FINISHED";
@@ -624,7 +505,7 @@ function App() {
                   type="button"
                   title="打开设置 (Ctrl/Cmd + ,)"
                   aria-label="打开设置"
-                  onClick={() => void openSettings()}
+                  onClick={handleOpenSettings}
                   className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[13px] text-zinc-200 transition hover:border-cyan-300/50 hover:text-cyan-100"
                 >
                   ⚙
@@ -636,24 +517,14 @@ function App() {
             </header>
 
             <div className="flex-1">
-              <section className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
-                <p className="mb-2 text-xs text-zinc-400">原始文本</p>
-                {stage === "INPUT" ? (
-                  <textarea
-                    value={rawText}
-                    onChange={(event) => setRawText(event.currentTarget.value)}
-                    placeholder="请在聊天框选中文本后按 Alt+Space，或直接在此输入"
-                    className="zen-scrollbar min-h-[5rem] w-full resize-y rounded-[12px] border border-white/10 bg-white/[0.02] px-2 py-2 text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
-                  />
-                ) : (
-                  <p className="zen-scrollbar max-h-28 min-h-[3rem] overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
-                    {rawText || "请在聊天框选中文本后按 Alt+Space"}
-                  </p>
-                )}
-              </section>
+              <SourceTextCard
+                stage={stage}
+                rawText={rawText}
+                onRawTextChange={setRawText}
+              />
 
               <AnimatePresence initial={false}>
-                {controlsVisible && (
+                {controlsVisible ? (
                   <motion.section
                     initial={{ height: 0, opacity: 0, y: -10 }}
                     animate={{ height: "auto", opacity: 1, y: 0 }}
@@ -661,283 +532,56 @@ function App() {
                     transition={{ duration: 0.24, ease: "easeOut" }}
                     className="overflow-hidden"
                   >
-                    <div className="mt-4 rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
-                      <p className="mb-2 text-xs text-zinc-400">沟通对象</p>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {ROLE_OPTIONS.map((role) => {
-                          const active = targetRole === role.id;
-                          return (
-                            <button
-                              key={role.id}
-                              type="button"
-                              onClick={() => {
-                                previousPresetRoleRef.current = role.id;
-                                setTargetRole(role.id);
-                                setIsCustomRoleEditing(false);
-                              }}
-                              className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                                active
-                                  ? "border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
-                                  : "border-white/15 bg-white/5 text-zinc-200 hover:border-white/35"
-                              }`}
-                            >
-                              {role.hotkey}. {role.label}
-                            </button>
-                          );
-                        })}
-
-                        <motion.div layout className="min-w-[170px] max-w-full">
-                          <AnimatePresence initial={false} mode="wait">
-                            {isCustomRoleEditing ? (
-                              <motion.input
-                                key="custom-role-input"
-                                layout
-                                ref={customRoleInputRef}
-                                autoFocus
-                                value={customRoleDraft}
-                                onChange={(event) =>
-                                  setCustomRoleDraft(event.currentTarget.value)
-                                }
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    confirmCustomRole();
-                                    return;
-                                  }
-
-                                  if (event.key === "Escape") {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    cancelCustomRoleEditing();
-                                  }
-                                }}
-                                placeholder="输入对方身份 (按 Enter 确认)"
-                                initial={{ opacity: 0, scale: 0.96 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.96 }}
-                                transition={{ duration: 0.18 }}
-                                className="w-full rounded-full border border-cyan-300/50 bg-cyan-300/15 px-3 py-1.5 text-xs text-cyan-100 outline-none placeholder:text-cyan-200/65"
-                              />
-                            ) : (
-                              <motion.button
-                                key={`custom-role-button-${customRoleName || "empty"}`}
-                                layout
-                                type="button"
-                                onClick={startCustomRoleEditing}
-                                initial={{ opacity: 0, scale: 0.96 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.96 }}
-                                transition={{ duration: 0.18 }}
-                                className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                                  targetRole === "custom"
-                                    ? "border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
-                                    : "border-white/15 bg-white/5 text-zinc-200 hover:border-white/35"
-                                }`}
-                              >
-                                {CUSTOM_ROLE_HOTKEY}.{" "}
-                                {targetRole === "custom" && customRoleName
-                                  ? customRoleName
-                                  : CUSTOM_ROLE_DEFAULT_LABEL}
-                              </motion.button>
-                            )}
-                          </AnimatePresence>
-                        </motion.div>
-                      </div>
-                      <p className="mt-2 text-xs text-zinc-500">
-                        {targetRole === "custom"
-                          ? customRoleName
-                            ? `已自定义对象：${customRoleName}（会自动推断权力关系与语气边界）`
-                            : "可输入任何对象身份，例如：奇葩房东、催命 HR、难缠亲戚"
-                          : roleMeta?.vibe}
-                      </p>
-
-                      <input
-                        value={contextText}
-                        onChange={(event) => setContextText(event.currentTarget.value)}
-                        placeholder="对方说了什么？(可选)"
-                        className="mt-3 w-full rounded-[16px] border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
-                      />
-
-                      <button
-                        type="button"
-                        onClick={() => void startGenerating()}
-                        disabled={isStreaming || !!errorMessage}
-                        className="mt-3 w-full rounded-[14px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-55"
-                      >
-                        ✨ 生成回复
-                      </button>
-                    </div>
+                    <RoleComposer
+                      targetRole={targetRole}
+                      customRoleName={customRoleName}
+                      customRoleDraft={customRoleDraft}
+                      isCustomRoleEditing={isCustomRoleEditing}
+                      contextText={contextText}
+                      roleVibe={roleMeta?.vibe}
+                      isStreaming={isStreaming}
+                      hasError={Boolean(errorMessage)}
+                      onSelectPresetRole={selectPresetRole}
+                      onStartCustomRoleEditing={startCustomRoleEditing}
+                      onCustomRoleDraftChange={setCustomRoleDraft}
+                      onCancelCustomRoleEditing={cancelCustomRoleEditing}
+                      onConfirmCustomRole={confirmCustomRole}
+                      onContextTextChange={setContextText}
+                      onGenerate={handleStartGenerating}
+                    />
                   </motion.section>
-                )}
+                ) : null}
               </AnimatePresence>
 
               <AnimatePresence initial={false}>
-                {resultVisible && (
-                  <motion.section
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.24, ease: "easeOut" }}
-                    className="mt-4 overflow-hidden"
-                  >
-                    <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
-                      <p className="mb-2 text-xs text-zinc-400">结果展示区</p>
-                      <p className="whitespace-pre-wrap text-sm leading-7 text-zinc-100">
-                        {streamedText}
-                        {isStreaming && <span className="zen-cursor ml-1">▌</span>}
-                      </p>
-
-                      <AnimatePresence>
-                        {stage === "FINISHED" && (
-                          <motion.div
-                            initial={{ opacity: 0, x: 16, y: 8 }}
-                            animate={{ opacity: 1, x: 0, y: 0 }}
-                            exit={{ opacity: 0, x: 12, y: 4 }}
-                            transition={{ duration: 0.2 }}
-                            className="mt-4 flex items-center justify-end gap-2"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => void terminateSession()}
-                              className="rounded-[12px] border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-zinc-200 transition hover:border-white/30"
-                            >
-                              Esc 取消
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void confirmAndCopy()}
-                              className="rounded-[12px] border border-emerald-300/50 bg-emerald-300/20 px-3 py-1.5 text-xs font-medium text-emerald-100 transition hover:bg-emerald-300/30"
-                            >
-                              ↵ 确认并复制
-                            </button>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </motion.section>
-                )}
+                {resultVisible ? (
+                  <ResultCard
+                    stage={stage}
+                    streamedText={streamedText}
+                    isStreaming={isStreaming}
+                    onCancel={handleTerminateSession}
+                    onConfirmAndCopy={handleConfirmAndCopy}
+                  />
+                ) : null}
               </AnimatePresence>
             </div>
 
-            <AnimatePresence>
-              {isSettingsOpen && (
-                <>
-                  <motion.button
-                    type="button"
-                    aria-label="关闭设置"
-                    className="absolute inset-0 z-20 cursor-default bg-black/45 backdrop-blur-[1px]"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={closeSettings}
-                  />
-                  <motion.aside
-                    initial={{ x: 32, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    exit={{ x: 24, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="absolute inset-y-0 right-0 z-30 flex w-full max-w-[430px] flex-col border-l border-white/15 bg-black/90 p-4 backdrop-blur-2xl"
-                  >
-                    <div className="mb-4 flex items-start justify-between gap-3">
-                      <div>
-                        <h2 className="text-base font-semibold text-zinc-100">设置</h2>
-                        <p className="mt-1 text-xs text-zinc-400">
-                          API Key 会保存在本地 Store。快捷键：Ctrl/Cmd + ,
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={closeSettings}
-                        className="rounded-md border border-white/15 px-2 py-1 text-xs text-zinc-300 transition hover:border-white/35"
-                      >
-                        关闭
-                      </button>
-                    </div>
-
-                    <label className="mb-2 text-xs text-zinc-300">api_key</label>
-                    <input
-                      type="password"
-                      value={settingsDraft.api_key}
-                      onChange={(event) =>
-                        onSettingsFieldChange("api_key", event.currentTarget.value)
-                      }
-                      placeholder="输入 API Key"
-                      className="mb-3 w-full rounded-[12px] border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
-                    />
-
-                    <label className="mb-2 text-xs text-zinc-300">api_base</label>
-                    <input
-                      type="text"
-                      value={settingsDraft.api_base}
-                      onChange={(event) =>
-                        onSettingsFieldChange("api_base", event.currentTarget.value)
-                      }
-                      placeholder="https://api.siliconflow.cn/v1"
-                      className="mb-3 w-full rounded-[12px] border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
-                    />
-
-                    <label className="mb-2 text-xs text-zinc-300">model_name</label>
-                    <input
-                      type="text"
-                      value={settingsDraft.model_name}
-                      onChange={(event) =>
-                        onSettingsFieldChange("model_name", event.currentTarget.value)
-                      }
-                      placeholder="Pro/MiniMaxAI/MiniMax-M2.5"
-                      className="w-full rounded-[12px] border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
-                    />
-
-                    <div className="mt-4 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void saveSettingsDraft()}
-                        disabled={isSettingsBusy}
-                        className="rounded-[10px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-2 text-xs font-medium text-cyan-100 transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        保存设置
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void testApiConnection()}
-                        disabled={isSettingsBusy}
-                        className="rounded-[10px] border border-emerald-300/45 bg-emerald-300/15 px-3 py-2 text-xs font-medium text-emerald-100 transition hover:bg-emerald-300/25 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        测试 API
-                      </button>
-                    </div>
-
-                    <p className="mt-3 min-h-5 text-xs text-zinc-300">
-                      {settingsFeedback ||
-                        "提示：保存后会持久化到本地，发起请求时会自动读取。"}
-                    </p>
-                  </motion.aside>
-                </>
-              )}
-            </AnimatePresence>
+            <SettingsDrawer
+              isOpen={isSettingsOpen}
+              settingsDraft={settingsDraft}
+              settingsFeedback={settingsFeedback}
+              isSettingsBusy={isSettingsBusy}
+              onClose={closeSettings}
+              onFieldChange={onSettingsFieldChange}
+              onSave={handleSaveSettings}
+              onTestApi={handleTestApi}
+            />
           </motion.main>
         </div>
       </motion.section>
 
       <ErrorToast message={errorMessage} />
-
-      <AnimatePresence>
-        {toastText && (
-          <motion.div
-            initial={{ opacity: 0, y: 14, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.98 }}
-            transition={{ duration: 0.2 }}
-            className={`pointer-events-none absolute bottom-4 rounded-[12px] border px-4 py-2 text-xs ${
-              toastText.startsWith("✅")
-                ? "border-emerald-300/45 bg-emerald-300/20 text-emerald-100"
-                : "border-rose-300/40 bg-rose-300/20 text-rose-100"
-            }`}
-          >
-            {toastText}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ToastBar message={toastText} />
     </div>
   );
 }
