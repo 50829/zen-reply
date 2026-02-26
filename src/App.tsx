@@ -28,10 +28,14 @@ const COPY_FAIL_TOAST = "复制失败，请重试";
 const HIDE_FAIL_TOAST = "窗口关闭失败，请重试";
 const SETTINGS_REQUIRED_TOAST = "请先在设置中填写 API Key";
 const MISSING_API_KEY_ERROR = "请先设置 API Key 以开启魔法。";
+const EMPTY_TEXT_ERROR = "请先选中文本后再按 Alt+Space唤起窗口。";
+const ERROR_DISPLAY_MS = 2000;
 
 type ClipboardPayload = {
   text: string;
 };
+
+type ErrorAction = "recover-input" | "terminate-session";
 
 function toErrorMessage(error: unknown): string {
   if (typeof error === "string") {
@@ -64,6 +68,7 @@ function App() {
   const [isSettingsBusy, setIsSettingsBusy] = useState(false);
   const [errorText, setErrorText] = useState("");
   const [showGoSettingsButton, setShowGoSettingsButton] = useState(false);
+  const [errorAction, setErrorAction] = useState<ErrorAction>("recover-input");
   const hideTimerRef = useRef<number | null>(null);
   const errorTimerRef = useRef<number | null>(null);
   const customRoleInputRef = useRef<HTMLInputElement | null>(null);
@@ -175,10 +180,15 @@ function App() {
     }
   }, [settingsDraft]);
 
-  const enterErrorState = useCallback((message: string, allowOpenSettings: boolean) => {
+  const enterErrorState = useCallback((
+    message: string,
+    allowOpenSettings: boolean,
+    action: ErrorAction = "recover-input",
+  ) => {
     setStage("ERROR");
     setErrorText(message);
     setShowGoSettingsButton(allowOpenSettings);
+    setErrorAction(action);
   }, []);
 
   const resetFlow = useCallback(() => {
@@ -197,6 +207,7 @@ function App() {
     setSettingsFeedback("");
     setErrorText("");
     setShowGoSettingsButton(false);
+    setErrorAction("recover-input");
     setIsSettingsOpen(false);
     setStage("IDLE");
   }, [clearErrorTimer, clearHideTimer, resetStream, stopStream]);
@@ -217,6 +228,7 @@ function App() {
 
   const terminateSession = useCallback(async () => {
     clearHideTimer();
+    clearErrorTimer();
     stopStream();
     resetStream();
 
@@ -227,7 +239,7 @@ function App() {
     }
 
     resetFlow();
-  }, [clearHideTimer, forceHideWindow, resetFlow, resetStream, stopStream]);
+  }, [clearErrorTimer, clearHideTimer, forceHideWindow, resetFlow, resetStream, stopStream]);
 
   const onWake = useCallback(
     (incomingText: string) => {
@@ -237,6 +249,7 @@ function App() {
       setToastText("");
       setErrorText("");
       setShowGoSettingsButton(false);
+      setErrorAction("recover-input");
       setRawText(incomingText.trim());
       setContextText("");
       setCustomRoleDraft("");
@@ -250,7 +263,7 @@ function App() {
   const startGenerating = useCallback(async (customRoleOverride?: string) => {
     try {
       if (!rawText.trim()) {
-        setToastText("请先选中文本后按 Alt+Space");
+        enterErrorState(EMPTY_TEXT_ERROR, false, "terminate-session");
         return;
       }
 
@@ -289,6 +302,7 @@ function App() {
       setToastText("");
       setErrorText("");
       setShowGoSettingsButton(false);
+      setErrorAction("recover-input");
       setIsSettingsOpen(false);
       setStage("GENERATING");
       startStream(prompt, {
@@ -409,13 +423,21 @@ function App() {
 
     clearErrorTimer();
     errorTimerRef.current = window.setTimeout(() => {
-      resetFlow();
-    }, 3000);
+      if (errorAction === "terminate-session") {
+        void terminateSession();
+        return;
+      }
+
+      setStage("INPUT");
+      setErrorText("");
+      setShowGoSettingsButton(false);
+      setErrorAction("recover-input");
+    }, ERROR_DISPLAY_MS);
 
     return () => {
       clearErrorTimer();
     };
-  }, [clearErrorTimer, errorText, resetFlow, stage]);
+  }, [clearErrorTimer, errorAction, stage, terminateSession]);
 
   useEffect(() => {
     if (!isCustomRoleEditing) {
