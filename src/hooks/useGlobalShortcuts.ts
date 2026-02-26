@@ -6,6 +6,7 @@ type UseGlobalShortcutsOptions = {
   stage: Stage;
   hasBlockingError: boolean;
   customRoleHotkey: number;
+  isSettingsBusy: boolean;
   onOpenSettings: () => void | Promise<void>;
   onCloseSettings: () => void;
   onTerminateSession: () => void | Promise<void>;
@@ -13,6 +14,7 @@ type UseGlobalShortcutsOptions = {
   onStartCustomRoleEditing: () => void;
   onStartGenerating: () => void | Promise<void>;
   onConfirmAndCopy: () => void | Promise<void>;
+  onSaveSettings: () => void | Promise<void>;
 };
 
 export function useGlobalShortcuts(options: UseGlobalShortcutsOptions) {
@@ -21,6 +23,7 @@ export function useGlobalShortcuts(options: UseGlobalShortcutsOptions) {
     stage,
     hasBlockingError,
     customRoleHotkey,
+    isSettingsBusy,
     onOpenSettings,
     onCloseSettings,
     onTerminateSession,
@@ -28,6 +31,7 @@ export function useGlobalShortcuts(options: UseGlobalShortcutsOptions) {
     onStartCustomRoleEditing,
     onStartGenerating,
     onConfirmAndCopy,
+    onSaveSettings,
   } = options;
 
   useEffect(() => {
@@ -41,6 +45,14 @@ export function useGlobalShortcuts(options: UseGlobalShortcutsOptions) {
           onCloseSettings();
         } else {
           void onOpenSettings();
+        }
+        return;
+      }
+
+      if ((event.metaKey || event.ctrlKey) && event.key === "s") {
+        event.preventDefault();
+        if (isSettingsOpen && !isSettingsBusy) {
+          void onSaveSettings();
         }
         return;
       }
@@ -95,10 +107,12 @@ export function useGlobalShortcuts(options: UseGlobalShortcutsOptions) {
   }, [
     customRoleHotkey,
     hasBlockingError,
+    isSettingsBusy,
     isSettingsOpen,
     onCloseSettings,
     onConfirmAndCopy,
     onOpenSettings,
+    onSaveSettings,
     onSelectRoleHotkey,
     onStartCustomRoleEditing,
     onStartGenerating,

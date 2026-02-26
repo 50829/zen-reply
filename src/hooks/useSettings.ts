@@ -8,18 +8,18 @@ import {
   type AppSettings,
 } from "../features/settings/store";
 import { toErrorMessage } from "../shared/utils";
+import type { ToastVariant } from "./useToast";
 
 type UseSettingsOptions = {
-  onToast?: (message: string) => void;
+  showToast?: (message: string, variant: ToastVariant, durationMs?: number) => void;
 };
 
 export function useSettings(options?: UseSettingsOptions) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsDraft, setSettingsDraft] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [settingsFeedback, setSettingsFeedback] = useState("");
   const [isSettingsBusy, setIsSettingsBusy] = useState(false);
 
-  const toast = options?.onToast;
+  const toast = options?.showToast;
 
   const syncSettingsFromStore = useCallback(async (): Promise<AppSettings | null> => {
     try {
@@ -27,7 +27,7 @@ export function useSettings(options?: UseSettingsOptions) {
       setSettingsDraft(current);
       return current;
     } catch (error) {
-      toast?.(toErrorMessage(error));
+      toast?.(toErrorMessage(error), "error");
       return null;
     }
   }, [toast]);
@@ -35,9 +35,8 @@ export function useSettings(options?: UseSettingsOptions) {
   const openSettings = useCallback(
     async (toastMessage?: string) => {
       await syncSettingsFromStore();
-      setSettingsFeedback("");
       if (toastMessage) {
-        toast?.(toastMessage);
+        toast?.(toastMessage, "info");
       }
       setIsSettingsOpen(true);
     },
@@ -45,12 +44,10 @@ export function useSettings(options?: UseSettingsOptions) {
   );
 
   const closeSettings = useCallback(() => {
-    setSettingsFeedback("");
     setIsSettingsOpen(false);
   }, []);
 
   const onFieldChange = useCallback((key: keyof AppSettings, value: string) => {
-    setSettingsFeedback("");
     setSettingsDraft((current) => ({
       ...current,
       [key]: value,
@@ -63,36 +60,36 @@ export function useSettings(options?: UseSettingsOptions) {
       const normalized = normalizeSettings(settingsDraft);
       const saved = await saveSettingsToStore(normalized);
       setSettingsDraft(saved);
-      setSettingsFeedback("✅ 设置已保存");
+      toast?.("设置已保存", "success");
     } catch (error) {
-      setSettingsFeedback(`❌ ${toErrorMessage(error)}`);
+      toast?.(toErrorMessage(error), "error");
     } finally {
       setIsSettingsBusy(false);
     }
-  }, [settingsDraft]);
+  }, [settingsDraft, toast]);
 
   const testApiConnection = useCallback(async () => {
     const normalized = normalizeSettings(settingsDraft);
     if (!normalized.api_key) {
-      setSettingsFeedback("❌ 请先填写 API Key");
+      toast?.("请先填写 API Key", "error");
       return;
     }
 
     setIsSettingsBusy(true);
-    setSettingsFeedback("测试中...");
+    toast?.("测试中...", "info", 10_000);
     try {
       await invoke<string>("test_api_connection", {
         apiKey: normalized.api_key,
         apiBase: normalized.api_base,
         modelName: normalized.model_name,
       });
-      setSettingsFeedback("✅ API 连接成功");
+      toast?.("API 连接成功", "success");
     } catch (error) {
-      setSettingsFeedback(`❌ ${toErrorMessage(error)}`);
+      toast?.(toErrorMessage(error), "error");
     } finally {
       setIsSettingsBusy(false);
     }
-  }, [settingsDraft]);
+  }, [settingsDraft, toast]);
 
   // Load settings on mount
   useEffect(() => {
@@ -102,10 +99,8 @@ export function useSettings(options?: UseSettingsOptions) {
   return {
     isSettingsOpen,
     settingsDraft,
-    settingsFeedback,
     isSettingsBusy,
     setIsSettingsOpen,
-    setSettingsFeedback,
     syncSettingsFromStore,
     openSettings,
     closeSettings,

@@ -158,7 +158,7 @@ export function RoleComposer({
         type="button"
         onClick={onGenerate}
         disabled={isStreaming || hasError}
-        className="mt-3 w-full rounded-[14px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-55"
+        className="mt-3 w-full rounded-[14px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
       >
         ✨ 生成回复
       </button>

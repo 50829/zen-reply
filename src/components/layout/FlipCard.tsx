@@ -24,11 +24,12 @@ export function FlipCard({
   const backRef = useRef<HTMLDivElement>(null);
   const [flipHeight, setFlipHeight] = useState(minHeight);
 
-  // Measure active face height for smooth 3D flip transition
+  // Measure both faces and use max height for stable 3D flip transition
   useEffect(() => {
     const measure = () => {
-      const el = isFlipped ? backRef.current : frontRef.current;
-      const h = el?.offsetHeight ?? 0;
+      const fh = frontRef.current?.offsetHeight ?? 0;
+      const bh = backRef.current?.offsetHeight ?? 0;
+      const h = Math.max(fh, bh);
       if (h > 0) setFlipHeight(h);
     };
     measure();

@@ -6,7 +6,6 @@ import type { PresetTargetRole, Stage, TargetRole, RoleOption } from "../../feat
 
 type WorkAreaProps = {
   stage: Stage;
-  stageLabel: string;
   rawText: string;
   targetRole: TargetRole;
   customRoleName: string;
@@ -17,7 +16,7 @@ type WorkAreaProps = {
   streamedText: string;
   isStreaming: boolean;
   isSettingsOpen: boolean;
-  errorMessage: string | null;
+  hasBlockingError: boolean;
   onRawTextChange: (text: string) => void;
   onSelectPresetRole: (role: PresetTargetRole) => void;
   onStartCustomRoleEditing: () => void;
@@ -33,7 +32,6 @@ type WorkAreaProps = {
 
 export function WorkArea({
   stage,
-  stageLabel,
   rawText,
   targetRole,
   customRoleName,
@@ -44,7 +42,7 @@ export function WorkArea({
   streamedText,
   isStreaming,
   isSettingsOpen,
-  errorMessage,
+  hasBlockingError,
   onRawTextChange,
   onSelectPresetRole,
   onStartCustomRoleEditing,
@@ -62,7 +60,7 @@ export function WorkArea({
 
   return (
     <div className="rounded-[24px] border border-white/30 bg-white/[0.08] p-[2px] shadow-[0_20px_70px_rgba(255,255,255,0.12)]">
-      <main className="relative flex w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-black/86 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.14),inset_0_-1px_0_rgba(255,255,255,0.05),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(34,211,238,0.15)]">
+      <main className="relative flex w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-[#0d1117]/90 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-1px_0_rgba(255,255,255,0.04),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(34,211,238,0.15)]">
         <header className="mb-4 flex shrink-0 items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">ZenReply</h1>
@@ -70,22 +68,17 @@ export function WorkArea({
               Alt+Space 唤醒，Enter 生成/确认，Esc 取消，Ctrl/Cmd + , 设置
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <motion.button
-              type="button"
-              title="打开设置 (Ctrl/Cmd + ,)"
-              aria-label="打开设置"
-              onClick={onOpenSettings}
-              animate={{ rotate: isSettingsOpen ? 180 : 0 }}
-              transition={{ type: "spring", stiffness: 200, damping: 15 }}
-              className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[13px] text-zinc-200 transition-colors hover:border-cyan-300/50 hover:text-cyan-100"
-            >
-              ⚙
-            </motion.button>
-            <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-zinc-300">
-              {stageLabel}
-            </span>
-          </div>
+          <motion.button
+            type="button"
+            title="打开设置 (Ctrl/Cmd + ,)"
+            aria-label="打开设置"
+            onClick={onOpenSettings}
+            animate={{ rotate: isSettingsOpen ? 180 : 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+            className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[13px] text-zinc-200 transition-colors hover:border-cyan-300/50 hover:text-cyan-100 active:scale-[0.97]"
+          >
+            ⚙
+          </motion.button>
         </header>
 
         <div className="flex-1">
@@ -112,7 +105,7 @@ export function WorkArea({
                   contextText={contextText}
                   roleVibe={roleMeta?.vibe}
                   isStreaming={isStreaming}
-                  hasError={Boolean(errorMessage)}
+                  hasError={hasBlockingError}
                   onSelectPresetRole={onSelectPresetRole}
                   onStartCustomRoleEditing={onStartCustomRoleEditing}
                   onCustomRoleDraftChange={onCustomRoleDraftChange}

@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef } from "react";
-import { ErrorToast } from "./components/feedback/ErrorToast";
-import { ToastBar } from "./components/feedback/ToastBar";
+import { ZenToast } from "./components/feedback/ZenToast";
 import { FlipCard } from "./components/layout/FlipCard";
 import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { WorkArea } from "./components/zenreply/WorkArea";
@@ -8,6 +7,7 @@ import { CUSTOM_ROLE_HOTKEY } from "./features/zenreply/types";
 import { useAutoResizeWindow } from "./hooks/useAutoResizeWindow";
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useSettings } from "./hooks/useSettings";
+import { useToast } from "./hooks/useToast";
 import { useZenReplyFlow } from "./hooks/useZenReplyFlow";
 
 const WINDOW_FIXED_WIDTH = 600;
@@ -18,20 +18,28 @@ const WINDOW_VERTICAL_PADDING = 32;
 function App() {
   const panelRef = useRef<HTMLElement | null>(null);
 
+  const { toast, showToast } = useToast({
+    onDismiss: (variant) => {
+      // When an error toast auto-dismisses, fall back to INPUT stage
+      if (variant === "error") {
+        // The flow hook watches hasBlockingError; clearing here is
+        // handled by the flow's own onWake / clearError calls.
+      }
+    },
+  });
+
   const {
     isSettingsOpen,
     settingsDraft,
-    settingsFeedback,
     isSettingsBusy,
     setIsSettingsOpen,
-    setSettingsFeedback,
     syncSettingsFromStore,
     openSettings,
     closeSettings,
     onFieldChange,
     saveSettings,
     testApiConnection,
-  } = useSettings();
+  } = useSettings({ showToast });
 
   const {
     stage,
@@ -41,12 +49,10 @@ function App() {
     customRoleName,
     customRoleDraft,
     isCustomRoleEditing,
-    toastText,
     panelAnimateKey,
-    errorMessage,
+    hasBlockingError,
     streamedText,
     isStreaming,
-    stageLabel,
     roleMeta,
     setRawText,
     setCustomRoleDraft,
@@ -64,9 +70,9 @@ function App() {
       () => ({
         syncSettingsFromStore,
         setIsSettingsOpen,
-        setSettingsFeedback,
+        showToast,
       }),
-      [syncSettingsFromStore, setIsSettingsOpen, setSettingsFeedback],
+      [syncSettingsFromStore, setIsSettingsOpen, showToast],
     ),
   );
 
@@ -110,7 +116,7 @@ function App() {
   useGlobalShortcuts({
     isSettingsOpen,
     stage,
-    hasBlockingError: Boolean(errorMessage),
+    hasBlockingError,
     customRoleHotkey: CUSTOM_ROLE_HOTKEY,
     onOpenSettings: handleOpenSettings,
     onCloseSettings: closeSettings,
@@ -119,6 +125,8 @@ function App() {
     onStartCustomRoleEditing: startCustomRoleEditing,
     onStartGenerating: handleStartGenerating,
     onConfirmAndCopy: handleConfirmAndCopy,
+    onSaveSettings: handleSaveSettings,
+    isSettingsBusy,
   });
 
   // ── Derived values ──
@@ -141,7 +149,6 @@ function App() {
         front={
           <WorkArea
             stage={stage}
-            stageLabel={stageLabel}
             rawText={rawText}
             targetRole={targetRole}
             customRoleName={customRoleName}
@@ -152,7 +159,7 @@ function App() {
             streamedText={streamedText}
             isStreaming={isStreaming}
             isSettingsOpen={isSettingsOpen}
-            errorMessage={errorMessage}
+            hasBlockingError={hasBlockingError}
             onRawTextChange={setRawText}
             onSelectPresetRole={selectPresetRole}
             onStartCustomRoleEditing={startCustomRoleEditing}
@@ -169,7 +176,6 @@ function App() {
         back={
           <SettingsPanel
             settingsDraft={settingsDraft}
-            settingsFeedback={settingsFeedback}
             isSettingsBusy={isSettingsBusy}
             onFlipBack={closeSettings}
             onFieldChange={onFieldChange}
@@ -179,8 +185,7 @@ function App() {
         }
       />
 
-      <ErrorToast message={errorMessage} />
-      <ToastBar message={toastText} />
+      <ZenToast toast={toast} />
     </>
   );
 }

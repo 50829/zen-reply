@@ -12,17 +12,12 @@ import {
   type TargetRole,
 } from "../features/zenreply/types";
 import { useLlmStream, type LlmApiConfig } from "./useLlmStream";
-import { useTransientError } from "./useTransientError";
+import type { ToastVariant } from "./useToast";
 import { toErrorMessage } from "../shared/utils";
 
 const CLIPBOARD_EVENT = "zenreply://clipboard-text";
-const SUCCESS_TOAST = "✅ 已复制";
-const COPY_FAIL_TOAST = "复制失败，请重试";
-const HIDE_FAIL_TOAST = "窗口关闭失败，请重试";
-const SETTINGS_REQUIRED_TOAST = "请先在设置中填写 API Key";
 const MISSING_API_KEY_ERROR = "请先设置 API Key 以开启魔法。";
-const EMPTY_TEXT_ERROR = "请先选中文本后再按 Alt+Space唤起窗口。";
-const ERROR_DISPLAY_MS = 2_000;
+const EMPTY_TEXT_ERROR = "请先选中文本后再按 Alt+Space 唤起窗口。";
 
 type ClipboardPayload = {
   text: string;
@@ -32,7 +27,7 @@ type ClipboardPayload = {
 export type SettingsDeps = {
   syncSettingsFromStore: () => Promise<AppSettings | null>;
   setIsSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setSettingsFeedback: React.Dispatch<React.SetStateAction<string>>;
+  showToast: (message: string, variant: ToastVariant, durationMs?: number) => void;
 };
 
 export function useZenReplyFlow(settings: SettingsDeps) {
@@ -43,7 +38,7 @@ export function useZenReplyFlow(settings: SettingsDeps) {
   const [customRoleName, setCustomRoleName] = useState("");
   const [customRoleDraft, setCustomRoleDraft] = useState("");
   const [isCustomRoleEditing, setIsCustomRoleEditing] = useState(false);
-  const [toastText, setToastText] = useState("");
+  const [hasBlockingError, setHasBlockingError] = useState(false);
   const [panelAnimateKey, setPanelAnimateKey] = useState(0);
 
   const hideTimerRef = useRef<number | null>(null);
@@ -58,26 +53,22 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     resetStream,
   } = useLlmStream();
 
-  const onErrorTimeout = useCallback(() => {
-    setStage("INPUT");
-  }, []);
+  const showError = useCallback(
+    (message: string) => {
+      setHasBlockingError(true);
+      settings.showToast(message, "error");
+    },
+    [settings],
+  );
 
-  const { errorMessage, showError, clearError } = useTransientError({
-    displayMs: ERROR_DISPLAY_MS,
-    onTimeout: onErrorTimeout,
-  });
+  const clearError = useCallback(() => {
+    setHasBlockingError(false);
+  }, []);
 
   const roleMeta = useMemo(
     () => ROLE_OPTIONS.find((role) => role.id === targetRole),
     [targetRole],
   );
-
-  const stageLabel = useMemo(() => {
-    if (stage === "IDLE") return "IDLE";
-    if (stage === "INPUT") return "INPUT";
-    if (stage === "GENERATING") return "GENERATING";
-    return "FINISHED";
-  }, [stage]);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current) {
@@ -98,8 +89,6 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     setCustomRoleDraft("");
     setIsCustomRoleEditing(false);
     previousPresetRoleRef.current = "boss";
-    setToastText("");
-    settings.setSettingsFeedback("");
     settings.setIsSettingsOpen(false);
     setStage("IDLE");
   }, [clearError, clearHideTimer, resetStream, settings, stopStream]);
@@ -125,12 +114,12 @@ export function useZenReplyFlow(settings: SettingsDeps) {
 
     const hidden = await forceHideWindow();
     if (!hidden) {
-      setToastText(HIDE_FAIL_TOAST);
+      settings.showToast("窗口关闭失败，请重试", "error");
       return;
     }
 
     resetFlow();
-  }, [clearHideTimer, forceHideWindow, resetFlow, resetStream, stopStream]);
+  }, [clearHideTimer, forceHideWindow, resetFlow, resetStream, settings, stopStream]);
 
   const onWake = useCallback(
     (incomingText: string) => {
@@ -138,7 +127,6 @@ export function useZenReplyFlow(settings: SettingsDeps) {
       stopStream();
       resetStream();
       clearError();
-      setToastText("");
       setRawText(incomingText.trim());
       setContextText("");
       setCustomRoleDraft("");
@@ -160,7 +148,7 @@ export function useZenReplyFlow(settings: SettingsDeps) {
 
         const customRoleFinal = (customRoleOverride ?? customRoleName).trim();
         if (targetRole === "custom" && !customRoleFinal) {
-          setToastText("请先输入自定义对象身份");
+          settings.showToast("请先输入自定义对象身份", "info");
           return;
         }
 
@@ -172,8 +160,6 @@ export function useZenReplyFlow(settings: SettingsDeps) {
         }
 
         if (!hasApiKey(currentSettings)) {
-          settings.setSettingsFeedback("请先填写 API Key");
-          setToastText(SETTINGS_REQUIRED_TOAST);
           setStage("INPUT");
           settings.setIsSettingsOpen(true);
           showError(MISSING_API_KEY_ERROR);
@@ -193,7 +179,6 @@ export function useZenReplyFlow(settings: SettingsDeps) {
           customRoleInput: customRoleFinal,
         });
 
-        setToastText("");
         clearError();
         settings.setIsSettingsOpen(false);
         setStage("GENERATING");
@@ -233,7 +218,6 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     setTargetRole("custom");
     setCustomRoleDraft(customRoleName);
     setIsCustomRoleEditing(true);
-    setToastText("");
     setStage("INPUT");
   }, [customRoleName, targetRole]);
 
@@ -249,7 +233,7 @@ export function useZenReplyFlow(settings: SettingsDeps) {
   const confirmCustomRole = useCallback(() => {
     const confirmedRole = customRoleDraft.trim();
     if (!confirmedRole) {
-      setToastText("请输入自定义对象身份");
+      settings.showToast("请输入自定义对象身份", "info");
       return;
     }
 
@@ -258,7 +242,7 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     setIsCustomRoleEditing(false);
     setCustomRoleDraft(confirmedRole);
     void startGenerating(confirmedRole);
-  }, [customRoleDraft, startGenerating]);
+  }, [customRoleDraft, settings, startGenerating]);
 
   const confirmAndCopy = useCallback(async () => {
     const output = streamedText.trim();
@@ -268,16 +252,16 @@ export function useZenReplyFlow(settings: SettingsDeps) {
 
     try {
       await writeText(output);
-      setToastText(SUCCESS_TOAST);
+      settings.showToast("已复制到剪贴板", "success");
 
       clearHideTimer();
       hideTimerRef.current = window.setTimeout(() => {
         void terminateSession();
       }, 800);
     } catch {
-      setToastText(COPY_FAIL_TOAST);
+      settings.showToast("复制失败，请重试", "error");
     }
-  }, [clearHideTimer, stage, streamedText, terminateSession]);
+  }, [clearHideTimer, settings, stage, streamedText, terminateSession]);
 
   const selectPresetRole = useCallback((role: PresetTargetRole) => {
     previousPresetRoleRef.current = role;
@@ -338,19 +322,16 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     customRoleName,
     customRoleDraft,
     isCustomRoleEditing,
-    toastText,
     panelAnimateKey,
-    errorMessage,
+    hasBlockingError,
     streamedText,
     isStreaming,
-    stageLabel,
     roleMeta,
 
     // Setters
     setRawText,
     setCustomRoleDraft,
     setContextText,
-    setToastText,
 
     // Actions
     startGenerating,
