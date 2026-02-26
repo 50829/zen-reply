@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DEFAULT_API_BASE, DEFAULT_MODEL_NAME } from "../shared/constants";
+import { normalizeValue, toErrorMessage } from "../shared/utils";
 
 const REQUEST_TIMEOUT_MS = 15_000;
-const DEFAULT_API_BASE = "https://api.siliconflow.cn/v1";
-const DEFAULT_MODEL_NAME = "Pro/MiniMaxAI/MiniMax-M2.5";
 
-type StreamKind = "delta" | "done";
 type AbortReason = "manual" | "timeout" | null;
 
 type StartStreamOptions = {
@@ -19,18 +18,8 @@ export type LlmApiConfig = {
   modelName: string;
 };
 
-type LlmStreamEventPayload = {
-  kind: StreamKind;
-  delta?: string | null;
-};
-
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
-}
-
-function normalizeValue(value: string | undefined, fallback: string): string {
-  const normalized = (value ?? "").trim();
-  return normalized || fallback;
 }
 
 function buildChatEndpoint(apiBase: string): string {
@@ -63,18 +52,6 @@ function parseDeltaFromSse(data: string): string | null {
   } catch {
     return null;
   }
-}
-
-function toReadableError(error: unknown): string {
-  if (error instanceof TypeError) {
-    return "无法连接到 AI 服务器，请检查网络。";
-  }
-
-  if (error instanceof Error && error.message.trim()) {
-    return error.message.trim();
-  }
-
-  return "生成失败，请稍后重试。";
 }
 
 export function useLlmStream() {
@@ -234,14 +211,9 @@ export function useLlmStream() {
             }
 
             const delta = parseDeltaFromSse(data);
-            const payload: LlmStreamEventPayload = {
-              kind: "delta",
-              delta,
-            };
-
-            if (payload.kind === "delta" && payload.delta) {
+            if (delta) {
               setStreamedText((current) =>
-                current ? current + payload.delta! : payload.delta!.replace(/^[\r\n]+/, ""),
+                current ? current + delta : delta.replace(/^[\r\n]+/, ""),
               );
             }
           }
@@ -259,10 +231,7 @@ export function useLlmStream() {
           }
         }
 
-        const donePayload: LlmStreamEventPayload = { kind: "done" };
-        if (donePayload.kind === "done") {
-          options?.onDone?.();
-        }
+        options?.onDone?.();
       } catch (error) {
         if (isAbortError(error)) {
           if (abortReasonRef.current === "timeout") {
@@ -271,7 +240,7 @@ export function useLlmStream() {
           return;
         }
 
-        emitError(toReadableError(error));
+        emitError(toErrorMessage(error));
       } finally {
         clearRequestTimeout();
         if (abortControllerRef.current === controller) {

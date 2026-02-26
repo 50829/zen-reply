@@ -1,4 +1,4 @@
-export type Stage = "IDLE" | "INPUT" | "GENERATING" | "FINISHED" | "ERROR";
+export type Stage = "IDLE" | "INPUT" | "GENERATING" | "FINISHED";
 
 export type PresetTargetRole = "boss" | "client" | "greenTea";
 export type TargetRole = PresetTargetRole | "custom";

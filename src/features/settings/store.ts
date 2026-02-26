@@ -1,13 +1,12 @@
 import { load, type Store } from "@tauri-apps/plugin-store";
+import { DEFAULT_API_BASE, DEFAULT_MODEL_NAME } from "../../shared/constants";
+import { normalizeValue } from "../../shared/utils";
 
 export type AppSettings = {
   api_key: string;
   api_base: string;
   model_name: string;
 };
-
-export const DEFAULT_API_BASE = "https://api.siliconflow.cn/v1";
-export const DEFAULT_MODEL_NAME = "Pro/MiniMaxAI/MiniMax-M2.5";
 
 export const DEFAULT_SETTINGS: AppSettings = {
   api_key: "",
@@ -23,11 +22,6 @@ function toOptionalString(value: unknown): string | undefined {
     return undefined;
   }
   return value;
-}
-
-function normalizeValue(value: string | undefined, fallback: string): string {
-  const trimmed = (value ?? "").trim();
-  return trimmed || fallback;
 }
 
 export function normalizeSettings(input: Partial<AppSettings>): AppSettings {
