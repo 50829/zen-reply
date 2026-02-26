@@ -4,6 +4,14 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { AnimatePresence, motion } from "framer-motion";
+import {
+  DEFAULT_SETTINGS,
+  hasApiKey,
+  normalizeSettings,
+  readSettings,
+  saveSettings,
+  type AppSettings,
+} from "./features/settings/store";
 import { buildPrompt } from "./features/zenreply/prompt";
 import {
   CUSTOM_ROLE_DEFAULT_LABEL,
@@ -12,16 +20,33 @@ import {
   type Stage,
   type TargetRole,
 } from "./features/zenreply/types";
-import { useLlmStream } from "./hooks/useLlmStream";
+import { useLlmStream, type LlmApiConfig } from "./hooks/useLlmStream";
 
 const CLIPBOARD_EVENT = "zenreply://clipboard-text";
 const SUCCESS_TOAST = "✅ 已复制";
 const COPY_FAIL_TOAST = "复制失败，请重试";
 const HIDE_FAIL_TOAST = "窗口关闭失败，请重试";
+const SETTINGS_REQUIRED_TOAST = "请先在设置中填写 API Key";
+const MISSING_API_KEY_ERROR = "请先设置 API Key 以开启魔法。";
 
 type ClipboardPayload = {
   text: string;
 };
+
+function toErrorMessage(error: unknown): string {
+  if (typeof error === "string") {
+    return error;
+  }
+
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) {
+      return message.trim();
+    }
+  }
+
+  return "操作失败，请重试";
+}
 
 function App() {
   const [stage, setStage] = useState<Stage>("IDLE");
@@ -33,7 +58,14 @@ function App() {
   const [isCustomRoleEditing, setIsCustomRoleEditing] = useState(false);
   const [toastText, setToastText] = useState("");
   const [panelAnimateKey, setPanelAnimateKey] = useState(0);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsDraft, setSettingsDraft] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [settingsFeedback, setSettingsFeedback] = useState("");
+  const [isSettingsBusy, setIsSettingsBusy] = useState(false);
+  const [errorText, setErrorText] = useState("");
+  const [showGoSettingsButton, setShowGoSettingsButton] = useState(false);
   const hideTimerRef = useRef<number | null>(null);
+  const errorTimerRef = useRef<number | null>(null);
   const customRoleInputRef = useRef<HTMLInputElement | null>(null);
   const previousPresetRoleRef = useRef<Exclude<TargetRole, "custom">>("boss");
 
@@ -55,6 +87,7 @@ function App() {
     if (stage === "IDLE") return "IDLE";
     if (stage === "INPUT") return "INPUT";
     if (stage === "GENERATING") return "GENERATING";
+    if (stage === "ERROR") return "ERROR";
     return "FINISHED";
   }, [stage]);
 
@@ -65,8 +98,92 @@ function App() {
     }
   }, []);
 
+  const clearErrorTimer = useCallback(() => {
+    if (errorTimerRef.current) {
+      window.clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = null;
+    }
+  }, []);
+
+  const syncSettingsFromStore = useCallback(async (): Promise<AppSettings | null> => {
+    try {
+      const current = await readSettings();
+      setSettingsDraft(current);
+      return current;
+    } catch (error) {
+      setToastText(toErrorMessage(error));
+      return null;
+    }
+  }, []);
+
+  const openSettings = useCallback(async (toastMessage?: string) => {
+    await syncSettingsFromStore();
+    setSettingsFeedback("");
+    if (toastMessage) {
+      setToastText(toastMessage);
+    }
+    setIsSettingsOpen(true);
+  }, [syncSettingsFromStore]);
+
+  const closeSettings = useCallback(() => {
+    setSettingsFeedback("");
+    setIsSettingsOpen(false);
+  }, []);
+
+  const onSettingsFieldChange = useCallback((key: keyof AppSettings, value: string) => {
+    setSettingsFeedback("");
+    setSettingsDraft((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }, []);
+
+  const saveSettingsDraft = useCallback(async () => {
+    setIsSettingsBusy(true);
+    try {
+      const normalized = normalizeSettings(settingsDraft);
+      const saved = await saveSettings(normalized);
+      setSettingsDraft(saved);
+      setSettingsFeedback("✅ 设置已保存");
+    } catch (error) {
+      setSettingsFeedback(`❌ ${toErrorMessage(error)}`);
+    } finally {
+      setIsSettingsBusy(false);
+    }
+  }, [settingsDraft]);
+
+  const testApiConnection = useCallback(async () => {
+    const normalized = normalizeSettings(settingsDraft);
+    if (!normalized.api_key) {
+      setSettingsFeedback("❌ 请先填写 API Key");
+      return;
+    }
+
+    setIsSettingsBusy(true);
+    setSettingsFeedback("测试中...");
+    try {
+      await invoke<string>("test_api_connection", {
+        apiKey: normalized.api_key,
+        apiBase: normalized.api_base,
+        modelName: normalized.model_name,
+      });
+      setSettingsFeedback("✅ API 连接成功");
+    } catch (error) {
+      setSettingsFeedback(`❌ ${toErrorMessage(error)}`);
+    } finally {
+      setIsSettingsBusy(false);
+    }
+  }, [settingsDraft]);
+
+  const enterErrorState = useCallback((message: string, allowOpenSettings: boolean) => {
+    setStage("ERROR");
+    setErrorText(message);
+    setShowGoSettingsButton(allowOpenSettings);
+  }, []);
+
   const resetFlow = useCallback(() => {
     clearHideTimer();
+    clearErrorTimer();
     stopStream();
     resetStream();
     setRawText("");
@@ -77,8 +194,12 @@ function App() {
     setIsCustomRoleEditing(false);
     previousPresetRoleRef.current = "boss";
     setToastText("");
+    setSettingsFeedback("");
+    setErrorText("");
+    setShowGoSettingsButton(false);
+    setIsSettingsOpen(false);
     setStage("IDLE");
-  }, [clearHideTimer, resetStream, stopStream]);
+  }, [clearErrorTimer, clearHideTimer, resetStream, stopStream]);
 
   const forceHideWindow = useCallback(async (): Promise<boolean> => {
     try {
@@ -114,6 +235,8 @@ function App() {
       stopStream();
       resetStream();
       setToastText("");
+      setErrorText("");
+      setShowGoSettingsButton(false);
       setRawText(incomingText.trim());
       setContextText("");
       setCustomRoleDraft("");
@@ -124,37 +247,71 @@ function App() {
     [clearHideTimer, resetStream, stopStream],
   );
 
-  const startGenerating = useCallback((customRoleOverride?: string) => {
-    if (!rawText.trim()) {
-      setToastText("请先选中文本后按 Alt+Space");
-      return;
+  const startGenerating = useCallback(async (customRoleOverride?: string) => {
+    try {
+      if (!rawText.trim()) {
+        setToastText("请先选中文本后按 Alt+Space");
+        return;
+      }
+
+      const customRoleFinal = (customRoleOverride ?? customRoleName).trim();
+      if (targetRole === "custom" && !customRoleFinal) {
+        setToastText("请先输入自定义对象身份");
+        return;
+      }
+
+      const settings = await syncSettingsFromStore();
+      if (!settings) {
+        enterErrorState("无法读取设置，请稍后重试。", false);
+        return;
+      }
+
+      if (!hasApiKey(settings)) {
+        setSettingsFeedback("请先填写 API Key");
+        setToastText(SETTINGS_REQUIRED_TOAST);
+        enterErrorState(MISSING_API_KEY_ERROR, true);
+        return;
+      }
+
+      const apiConfig: LlmApiConfig = {
+        apiKey: settings.api_key,
+        apiBase: settings.api_base,
+        modelName: settings.model_name,
+      };
+
+      const prompt = buildPrompt({
+        rawText,
+        targetRole,
+        contextText,
+        customRoleInput: customRoleFinal,
+      });
+
+      setToastText("");
+      setErrorText("");
+      setShowGoSettingsButton(false);
+      setIsSettingsOpen(false);
+      setStage("GENERATING");
+      startStream(prompt, {
+        apiConfig,
+        onDone: () => {
+          setStage("FINISHED");
+        },
+        onError: (message) => {
+          enterErrorState(message, false);
+        },
+      });
+    } catch (error) {
+      enterErrorState(toErrorMessage(error), false);
     }
-
-    const customRoleFinal = (customRoleOverride ?? customRoleName).trim();
-    if (targetRole === "custom" && !customRoleFinal) {
-      setToastText("请先输入自定义对象身份");
-      return;
-    }
-
-    const prompt = buildPrompt({
-      rawText,
-      targetRole,
-      contextText,
-      customRoleInput: customRoleFinal,
-    });
-
-    setToastText("");
-    setStage("GENERATING");
-    startStream(prompt, {
-      onDone: () => {
-        setStage("FINISHED");
-      },
-      onError: (message) => {
-        setStage("INPUT");
-        setToastText(message);
-      },
-    });
-  }, [contextText, customRoleName, rawText, startStream, targetRole]);
+  }, [
+    contextText,
+    customRoleName,
+    enterErrorState,
+    rawText,
+    startStream,
+    syncSettingsFromStore,
+    targetRole,
+  ]);
 
   const startCustomRoleEditing = useCallback(() => {
     if (targetRole !== "custom") {
@@ -188,7 +345,7 @@ function App() {
     setTargetRole("custom");
     setIsCustomRoleEditing(false);
     setCustomRoleDraft(confirmedRole);
-    startGenerating(confirmedRole);
+    void startGenerating(confirmedRole);
   }, [customRoleDraft, startGenerating]);
 
   const confirmAndCopy = useCallback(async () => {
@@ -209,6 +366,10 @@ function App() {
       setToastText(COPY_FAIL_TOAST);
     }
   }, [clearHideTimer, stage, streamedText, terminateSession]);
+
+  useEffect(() => {
+    void syncSettingsFromStore();
+  }, [syncSettingsFromStore]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -236,10 +397,25 @@ function App() {
 
   useEffect(() => {
     if (streamError) {
-      setStage("INPUT");
-      setToastText(streamError);
+      enterErrorState(streamError, false);
     }
-  }, [streamError]);
+  }, [enterErrorState, streamError]);
+
+  useEffect(() => {
+    if (stage !== "ERROR") {
+      clearErrorTimer();
+      return;
+    }
+
+    clearErrorTimer();
+    errorTimerRef.current = window.setTimeout(() => {
+      resetFlow();
+    }, 3000);
+
+    return () => {
+      clearErrorTimer();
+    };
+  }, [clearErrorTimer, errorText, resetFlow, stage]);
 
   useEffect(() => {
     if (!isCustomRoleEditing) {
@@ -262,9 +438,27 @@ function App() {
       const isTyping =
         target?.tagName === "INPUT" || target?.tagName === "TEXTAREA";
 
+      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+        event.preventDefault();
+        if (isSettingsOpen) {
+          closeSettings();
+        } else {
+          void openSettings();
+        }
+        return;
+      }
+
       if (event.key === "Escape") {
         event.preventDefault();
+        if (isSettingsOpen) {
+          closeSettings();
+          return;
+        }
         void terminateSession();
+        return;
+      }
+
+      if (isSettingsOpen) {
         return;
       }
 
@@ -287,9 +481,9 @@ function App() {
       }
 
       if (event.key === "Enter" && !event.shiftKey) {
-        if (stage === "INPUT") {
+        if (stage === "INPUT" || stage === "ERROR") {
           event.preventDefault();
-          startGenerating();
+          void startGenerating();
           return;
         }
 
@@ -304,10 +498,20 @@ function App() {
     return () => {
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [confirmAndCopy, stage, startCustomRoleEditing, startGenerating, terminateSession]);
+  }, [
+    closeSettings,
+    confirmAndCopy,
+    isSettingsOpen,
+    openSettings,
+    stage,
+    startCustomRoleEditing,
+    startGenerating,
+    terminateSession,
+  ]);
 
-  const controlsVisible = stage === "INPUT" || stage === "IDLE";
-  const resultVisible = stage === "GENERATING" || stage === "FINISHED";
+  const controlsVisible = stage === "INPUT" || stage === "IDLE" || stage === "ERROR";
+  const resultVisible =
+    stage === "GENERATING" || stage === "FINISHED" || stage === "ERROR";
   const panelWidthClass = resultVisible
     ? "w-[96vw] max-w-[980px]"
     : "w-[92vw] max-w-[720px]";
@@ -322,17 +526,28 @@ function App() {
         className={`transition-[max-width,width] duration-300 ${panelWidthClass}`}
       >
         <div className="rounded-[24px] border border-white/30 bg-white/[0.08] p-[2px] shadow-[0_20px_70px_rgba(255,255,255,0.12)]">
-          <motion.main className="flex w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-black/86 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.14),inset_0_-1px_0_rgba(255,255,255,0.05),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(34,211,238,0.15)]">
+          <motion.main className="relative flex w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-black/86 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.14),inset_0_-1px_0_rgba(255,255,255,0.05),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(34,211,238,0.15)]">
             <header className="mb-4 flex shrink-0 items-center justify-between">
               <div>
                 <h1 className="text-xl font-semibold tracking-tight">ZenReply</h1>
                 <p className="mt-1 text-xs text-zinc-400">
-                  Alt+Space 唤醒，Enter 生成/确认，Esc 取消
+                  Alt+Space 唤醒，Enter 生成/确认，Esc 取消，Ctrl/Cmd + , 设置
                 </p>
               </div>
-              <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-zinc-300">
-                {stageLabel}
-              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  title="打开设置 (Ctrl/Cmd + ,)"
+                  aria-label="打开设置"
+                  onClick={() => void openSettings()}
+                  className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[13px] text-zinc-200 transition hover:border-cyan-300/50 hover:text-cyan-100"
+                >
+                  ⚙
+                </button>
+                <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-zinc-300">
+                  {stageLabel}
+                </span>
+              </div>
             </header>
 
             <div className="flex-1">
@@ -452,7 +667,7 @@ function App() {
 
                       <button
                         type="button"
-                        onClick={() => startGenerating()}
+                        onClick={() => void startGenerating()}
                         className="mt-3 w-full rounded-[14px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25"
                       >
                         ✨ 生成回复
@@ -472,43 +687,174 @@ function App() {
                     className="mt-4 overflow-hidden"
                   >
                     <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
-                      <p className="mb-2 text-xs text-zinc-400">结果展示区</p>
-                      <p className="whitespace-pre-wrap text-sm leading-7 text-zinc-100">
-                        {streamedText}
-                        {isStreaming && <span className="zen-cursor ml-1">▌</span>}
-                      </p>
+                      {stage === "ERROR" ? (
+                        <div className="rounded-[14px] border border-rose-300/35 bg-rose-300/10 p-3">
+                          <div className="flex items-start gap-2">
+                            <span className="text-sm text-rose-200">❌</span>
+                            <div>
+                              <p className="text-xs text-rose-200">生成失败</p>
+                              <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-rose-100">
+                                {errorText || "请求失败，请稍后重试。"}
+                              </p>
+                            </div>
+                          </div>
 
-                      <AnimatePresence>
-                        {stage === "FINISHED" && (
-                          <motion.div
-                            initial={{ opacity: 0, x: 16, y: 8 }}
-                            animate={{ opacity: 1, x: 0, y: 0 }}
-                            exit={{ opacity: 0, x: 12, y: 4 }}
-                            transition={{ duration: 0.2 }}
-                            className="mt-4 flex items-center justify-end gap-2"
-                          >
+                          <div className="mt-3 flex items-center justify-end gap-2">
+                            {showGoSettingsButton && (
+                              <button
+                                type="button"
+                                onClick={() => void openSettings()}
+                                className="rounded-[12px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-1.5 text-xs font-medium text-cyan-100 transition hover:bg-cyan-300/25"
+                              >
+                                去设置
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => void terminateSession()}
-                              className="rounded-[12px] border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-zinc-200 transition hover:border-white/30"
+                              onClick={() => void startGenerating()}
+                              className="rounded-[12px] border border-rose-300/45 bg-rose-300/20 px-3 py-1.5 text-xs font-medium text-rose-100 transition hover:bg-rose-300/30"
                             >
-                              Esc 取消
+                              重试
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => void confirmAndCopy()}
-                              className="rounded-[12px] border border-emerald-300/50 bg-emerald-300/20 px-3 py-1.5 text-xs font-medium text-emerald-100 transition hover:bg-emerald-300/30"
-                            >
-                              ↵ 确认并复制
-                            </button>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="mb-2 text-xs text-zinc-400">结果展示区</p>
+                          <p className="whitespace-pre-wrap text-sm leading-7 text-zinc-100">
+                            {streamedText}
+                            {isStreaming && <span className="zen-cursor ml-1">▌</span>}
+                          </p>
+
+                          <AnimatePresence>
+                            {stage === "FINISHED" && (
+                              <motion.div
+                                initial={{ opacity: 0, x: 16, y: 8 }}
+                                animate={{ opacity: 1, x: 0, y: 0 }}
+                                exit={{ opacity: 0, x: 12, y: 4 }}
+                                transition={{ duration: 0.2 }}
+                                className="mt-4 flex items-center justify-end gap-2"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => void terminateSession()}
+                                  className="rounded-[12px] border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-zinc-200 transition hover:border-white/30"
+                                >
+                                  Esc 取消
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void confirmAndCopy()}
+                                  className="rounded-[12px] border border-emerald-300/50 bg-emerald-300/20 px-3 py-1.5 text-xs font-medium text-emerald-100 transition hover:bg-emerald-300/30"
+                                >
+                                  ↵ 确认并复制
+                                </button>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </>
+                      )}
                     </div>
                   </motion.section>
                 )}
               </AnimatePresence>
             </div>
+
+            <AnimatePresence>
+              {isSettingsOpen && (
+                <>
+                  <motion.button
+                    type="button"
+                    aria-label="关闭设置"
+                    className="absolute inset-0 z-20 cursor-default bg-black/45 backdrop-blur-[1px]"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={closeSettings}
+                  />
+                  <motion.aside
+                    initial={{ x: 32, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: 24, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="absolute inset-y-0 right-0 z-30 flex w-full max-w-[430px] flex-col border-l border-white/15 bg-black/90 p-4 backdrop-blur-2xl"
+                  >
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-base font-semibold text-zinc-100">设置</h2>
+                        <p className="mt-1 text-xs text-zinc-400">
+                          API Key 会保存在本地 Store。快捷键：Ctrl/Cmd + ,
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={closeSettings}
+                        className="rounded-md border border-white/15 px-2 py-1 text-xs text-zinc-300 transition hover:border-white/35"
+                      >
+                        关闭
+                      </button>
+                    </div>
+
+                    <label className="mb-2 text-xs text-zinc-300">api_key</label>
+                    <input
+                      type="password"
+                      value={settingsDraft.api_key}
+                      onChange={(event) =>
+                        onSettingsFieldChange("api_key", event.currentTarget.value)
+                      }
+                      placeholder="输入 API Key"
+                      className="mb-3 w-full rounded-[12px] border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
+                    />
+
+                    <label className="mb-2 text-xs text-zinc-300">api_base</label>
+                    <input
+                      type="text"
+                      value={settingsDraft.api_base}
+                      onChange={(event) =>
+                        onSettingsFieldChange("api_base", event.currentTarget.value)
+                      }
+                      placeholder="https://api.siliconflow.cn/v1"
+                      className="mb-3 w-full rounded-[12px] border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
+                    />
+
+                    <label className="mb-2 text-xs text-zinc-300">model_name</label>
+                    <input
+                      type="text"
+                      value={settingsDraft.model_name}
+                      onChange={(event) =>
+                        onSettingsFieldChange("model_name", event.currentTarget.value)
+                      }
+                      placeholder="Pro/MiniMaxAI/MiniMax-M2.5"
+                      className="w-full rounded-[12px] border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
+                    />
+
+                    <div className="mt-4 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void saveSettingsDraft()}
+                        disabled={isSettingsBusy}
+                        className="rounded-[10px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-2 text-xs font-medium text-cyan-100 transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        保存设置
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void testApiConnection()}
+                        disabled={isSettingsBusy}
+                        className="rounded-[10px] border border-emerald-300/45 bg-emerald-300/15 px-3 py-2 text-xs font-medium text-emerald-100 transition hover:bg-emerald-300/25 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        测试 API
+                      </button>
+                    </div>
+
+                    <p className="mt-3 min-h-5 text-xs text-zinc-300">
+                      {settingsFeedback ||
+                        "提示：保存后会持久化到本地，发起请求时会自动读取。"}
+                    </p>
+                  </motion.aside>
+                </>
+              )}
+            </AnimatePresence>
           </motion.main>
         </div>
       </motion.section>

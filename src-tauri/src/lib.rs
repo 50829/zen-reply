@@ -14,6 +14,8 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 const ACTIVATION_SHORTCUT: &str = "Alt+Space";
 const CLIPBOARD_EVENT: &str = "zenreply://clipboard-text";
 const LLM_STREAM_EVENT: &str = "zenreply://llm-stream";
+const DEFAULT_API_BASE: &str = "https://api.siliconflow.cn/v1";
+const DEFAULT_MODEL_NAME: &str = "Pro/MiniMaxAI/MiniMax-M2.5";
 
 #[derive(Clone, Serialize)]
 struct ClipboardPayload {
@@ -60,6 +62,48 @@ impl StreamControl {
     }
 }
 
+fn normalize_optional(value: Option<String>) -> Option<String> {
+    value
+        .map(|item| item.trim().to_string())
+        .filter(|item| !item.is_empty())
+}
+
+fn fallback_env(key: &str) -> Option<String> {
+    env::var(key)
+        .ok()
+        .map(|item| item.trim().to_string())
+        .filter(|item| !item.is_empty())
+}
+
+fn build_chat_endpoint(api_base: &str) -> String {
+    let normalized_base = api_base.trim_end_matches('/');
+    if normalized_base.ends_with("/chat/completions") {
+        normalized_base.to_string()
+    } else {
+        format!("{normalized_base}/chat/completions")
+    }
+}
+
+fn resolve_api_settings(
+    api_key: Option<String>,
+    api_base: Option<String>,
+    model_name: Option<String>,
+) -> Result<(String, String, String), String> {
+    let resolved_api_key = normalize_optional(api_key)
+        .or_else(|| fallback_env("ZENREPLY_API_KEY"))
+        .ok_or_else(|| "缺少 API Key，请在设置中填写".to_string())?;
+
+    let resolved_api_base = normalize_optional(api_base)
+        .or_else(|| fallback_env("ZENREPLY_API_BASE"))
+        .unwrap_or_else(|| DEFAULT_API_BASE.to_string());
+
+    let resolved_model_name = normalize_optional(model_name)
+        .or_else(|| fallback_env("ZENREPLY_MODEL"))
+        .unwrap_or_else(|| DEFAULT_MODEL_NAME.to_string());
+
+    Ok((resolved_api_key, resolved_api_base, resolved_model_name))
+}
+
 #[tauri::command]
 fn hide_window(window: tauri::WebviewWindow) -> Result<(), String> {
     window.hide().map_err(|err| err.to_string())
@@ -81,6 +125,56 @@ fn cancel_generate_reply(
     Ok(())
 }
 
+#[tauri::command]
+async fn test_api_connection(
+    api_key: String,
+    api_base: Option<String>,
+    model_name: Option<String>,
+) -> Result<String, String> {
+    let (resolved_api_key, resolved_api_base, resolved_model_name) =
+        resolve_api_settings(Some(api_key), api_base, model_name)?;
+
+    let endpoint = build_chat_endpoint(&resolved_api_base);
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|err| format!("创建 HTTP 客户端失败: {err}"))?;
+
+    let request_body = json!({
+        "model": resolved_model_name,
+        "stream": false,
+        "temperature": 0.0,
+        "max_tokens": 8,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a concise assistant."
+            },
+            {
+                "role": "user",
+                "content": "hi"
+            }
+        ]
+    });
+
+    let response = client
+        .post(endpoint)
+        .bearer_auth(resolved_api_key)
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|err| format!("调用模型接口失败: {err}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_default();
+        return Err(format!("模型接口错误 {status}: {error_text}"));
+    }
+
+    Ok("API 连接成功".to_string())
+}
+
 fn emit_stream_event<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     request_id: &str,
@@ -99,7 +193,11 @@ fn emit_stream_event<R: tauri::Runtime>(
     );
 }
 
-fn emit_stream_delta<R: tauri::Runtime>(app: &tauri::AppHandle<R>, request_id: &str, delta: String) {
+fn emit_stream_delta<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    request_id: &str,
+    delta: String,
+) {
     emit_stream_event(app, request_id, "delta", Some(delta), None);
 }
 
@@ -107,7 +205,11 @@ fn emit_stream_done<R: tauri::Runtime>(app: &tauri::AppHandle<R>, request_id: &s
     emit_stream_event(app, request_id, "done", None, None);
 }
 
-fn emit_stream_error<R: tauri::Runtime>(app: &tauri::AppHandle<R>, request_id: &str, message: String) {
+fn emit_stream_error<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    request_id: &str,
+    message: String,
+) {
     emit_stream_event(app, request_id, "error", None, Some(message));
 }
 
@@ -164,6 +266,9 @@ async fn stream_generate_reply(
     stream_control: tauri::State<'_, StreamControl>,
     request_id: String,
     prompt: String,
+    api_key: Option<String>,
+    api_base: Option<String>,
+    model_name: Option<String>,
 ) -> Result<(), String> {
     let stream_control = stream_control.inner().clone();
     stream_control.clear(&request_id);
@@ -181,25 +286,16 @@ async fn stream_generate_reply(
         return Ok(());
     }
 
-    let api_key = match env::var("ZENREPLY_API_KEY") {
-        Ok(value) => value,
-        Err(_) => {
-            let message = "缺少环境变量 ZENREPLY_API_KEY".to_string();
+    let (api_key, api_base, model) = match resolve_api_settings(api_key, api_base, model_name) {
+        Ok(settings) => settings,
+        Err(message) => {
             emit_stream_error(&app, &request_id, message.clone());
             stream_control.clear(&request_id);
             return Err(message);
         }
     };
 
-    let api_base = env::var("ZENREPLY_API_BASE").unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
-    let model = env::var("ZENREPLY_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
-
-    let normalized_base = api_base.trim_end_matches('/');
-    let endpoint = if normalized_base.ends_with("/chat/completions") {
-        normalized_base.to_string()
-    } else {
-        format!("{normalized_base}/chat/completions")
-    };
+    let endpoint = build_chat_endpoint(&api_base);
 
     let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
@@ -355,9 +451,7 @@ fn capture_selected_text<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> String
         }
     }
 
-    app.clipboard()
-        .read_text()
-        .unwrap_or(previous)
+    app.clipboard().read_text().unwrap_or(previous)
 }
 
 fn on_shortcut_pressed<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
@@ -380,21 +474,21 @@ pub fn run() {
         .manage(StreamControl::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
-            app.global_shortcut().on_shortcut(
-                ACTIVATION_SHORTCUT,
-                |app, _shortcut, event| {
+            app.global_shortcut()
+                .on_shortcut(ACTIVATION_SHORTCUT, |app, _shortcut, event| {
                     if event.state == ShortcutState::Released {
                         on_shortcut_pressed(app);
                     }
-                },
-            )?;
+                })?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             hide_window,
             copy_text_to_clipboard,
+            test_api_connection,
             cancel_generate_reply,
             stream_generate_reply
         ])
