@@ -15,9 +15,9 @@
         "label": "main",
         "title": "ZenReply",
         "width": 600,
-        "height": 400,
+        "height": 450,
         "center": true,
-        "resizable": false,
+        "resizable": true,
         "decorations": false,
         "transparent": true,
         "visible": false

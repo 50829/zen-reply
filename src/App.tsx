@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { AnimatePresence, motion } from "framer-motion";
+import { ErrorToast } from "./components/ErrorToast";
 import {
   DEFAULT_SETTINGS,
   hasApiKey,
@@ -30,12 +31,16 @@ const SETTINGS_REQUIRED_TOAST = "请先在设置中填写 API Key";
 const MISSING_API_KEY_ERROR = "请先设置 API Key 以开启魔法。";
 const EMPTY_TEXT_ERROR = "请先选中文本后再按 Alt+Space唤起窗口。";
 const ERROR_DISPLAY_MS = 2000;
+const WINDOW_FIXED_WIDTH = 600;
+const WINDOW_MIN_HEIGHT = 280;
+const WINDOW_MAX_HEIGHT = 980;
+const WINDOW_VERTICAL_PADDING = 32;
 
 type ClipboardPayload = {
   text: string;
 };
 
-type ErrorAction = "recover-input" | "terminate-session";
+type ErrorAutoAction = "none" | "terminate-session";
 
 function toErrorMessage(error: unknown): string {
   if (typeof error === "string") {
@@ -66,11 +71,13 @@ function App() {
   const [settingsDraft, setSettingsDraft] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [settingsFeedback, setSettingsFeedback] = useState("");
   const [isSettingsBusy, setIsSettingsBusy] = useState(false);
-  const [errorText, setErrorText] = useState("");
-  const [showGoSettingsButton, setShowGoSettingsButton] = useState(false);
-  const [errorAction, setErrorAction] = useState<ErrorAction>("recover-input");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorAutoAction, setErrorAutoAction] = useState<ErrorAutoAction>("none");
   const hideTimerRef = useRef<number | null>(null);
   const errorTimerRef = useRef<number | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const resizeRafRef = useRef<number | null>(null);
+  const lastAppliedHeightRef = useRef(0);
   const customRoleInputRef = useRef<HTMLInputElement | null>(null);
   const previousPresetRoleRef = useRef<Exclude<TargetRole, "custom">>("boss");
 
@@ -92,7 +99,6 @@ function App() {
     if (stage === "IDLE") return "IDLE";
     if (stage === "INPUT") return "INPUT";
     if (stage === "GENERATING") return "GENERATING";
-    if (stage === "ERROR") return "ERROR";
     return "FINISHED";
   }, [stage]);
 
@@ -180,15 +186,12 @@ function App() {
     }
   }, [settingsDraft]);
 
-  const enterErrorState = useCallback((
+  const showError = useCallback((
     message: string,
-    allowOpenSettings: boolean,
-    action: ErrorAction = "recover-input",
+    action: ErrorAutoAction = "none",
   ) => {
-    setStage("ERROR");
-    setErrorText(message);
-    setShowGoSettingsButton(allowOpenSettings);
-    setErrorAction(action);
+    setErrorMessage(message);
+    setErrorAutoAction(action);
   }, []);
 
   const resetFlow = useCallback(() => {
@@ -205,9 +208,8 @@ function App() {
     previousPresetRoleRef.current = "boss";
     setToastText("");
     setSettingsFeedback("");
-    setErrorText("");
-    setShowGoSettingsButton(false);
-    setErrorAction("recover-input");
+    setErrorMessage(null);
+    setErrorAutoAction("none");
     setIsSettingsOpen(false);
     setStage("IDLE");
   }, [clearErrorTimer, clearHideTimer, resetStream, stopStream]);
@@ -247,9 +249,8 @@ function App() {
       stopStream();
       resetStream();
       setToastText("");
-      setErrorText("");
-      setShowGoSettingsButton(false);
-      setErrorAction("recover-input");
+      setErrorMessage(null);
+      setErrorAutoAction("none");
       setRawText(incomingText.trim());
       setContextText("");
       setCustomRoleDraft("");
@@ -263,7 +264,8 @@ function App() {
   const startGenerating = useCallback(async (customRoleOverride?: string) => {
     try {
       if (!rawText.trim()) {
-        enterErrorState(EMPTY_TEXT_ERROR, false, "terminate-session");
+        setStage("INPUT");
+        showError(EMPTY_TEXT_ERROR, "terminate-session");
         return;
       }
 
@@ -275,14 +277,17 @@ function App() {
 
       const settings = await syncSettingsFromStore();
       if (!settings) {
-        enterErrorState("无法读取设置，请稍后重试。", false);
+        setStage("INPUT");
+        showError("无法读取设置，请稍后重试。");
         return;
       }
 
       if (!hasApiKey(settings)) {
         setSettingsFeedback("请先填写 API Key");
         setToastText(SETTINGS_REQUIRED_TOAST);
-        enterErrorState(MISSING_API_KEY_ERROR, true);
+        setStage("INPUT");
+        setIsSettingsOpen(true);
+        showError(MISSING_API_KEY_ERROR);
         return;
       }
 
@@ -300,9 +305,8 @@ function App() {
       });
 
       setToastText("");
-      setErrorText("");
-      setShowGoSettingsButton(false);
-      setErrorAction("recover-input");
+      setErrorMessage(null);
+      setErrorAutoAction("none");
       setIsSettingsOpen(false);
       setStage("GENERATING");
       startStream(prompt, {
@@ -311,17 +315,19 @@ function App() {
           setStage("FINISHED");
         },
         onError: (message) => {
-          enterErrorState(message, false);
+          setStage("INPUT");
+          showError(message);
         },
       });
     } catch (error) {
-      enterErrorState(toErrorMessage(error), false);
+      setStage("INPUT");
+      showError(toErrorMessage(error));
     }
   }, [
     contextText,
     customRoleName,
-    enterErrorState,
     rawText,
+    showError,
     startStream,
     syncSettingsFromStore,
     targetRole,
@@ -411,33 +417,101 @@ function App() {
 
   useEffect(() => {
     if (streamError) {
-      enterErrorState(streamError, false);
+      setStage("INPUT");
+      showError(streamError);
     }
-  }, [enterErrorState, streamError]);
+  }, [showError, streamError]);
+//TODO：窗口可变逻辑，似乎有点失败
+  useEffect(() => {
+    const appWindow = getCurrentWindow();
+    let active = true;
+    let observer: ResizeObserver | null = null;
+
+    const clearResizeRaf = () => {
+      if (resizeRafRef.current !== null) {
+        window.cancelAnimationFrame(resizeRafRef.current);
+        resizeRafRef.current = null;
+      }
+    };
+
+    const applyWindowSize = async () => {
+      if (!active) {
+        return;
+      }
+
+      const panelHeight = panelRef.current?.getBoundingClientRect().height ?? 0;
+      if (!panelHeight) {
+        return;
+      }
+
+      const nextHeight = Math.round(
+        Math.min(
+          WINDOW_MAX_HEIGHT,
+          Math.max(WINDOW_MIN_HEIGHT, panelHeight + WINDOW_VERTICAL_PADDING),
+        ),
+      );
+
+      if (nextHeight === lastAppliedHeightRef.current) {
+        return;
+      }
+
+      lastAppliedHeightRef.current = nextHeight;
+
+      try {
+        await appWindow.setResizable(true);
+        await appWindow.setMinSize(new LogicalSize(WINDOW_FIXED_WIDTH, WINDOW_MIN_HEIGHT));
+        await appWindow.setMaxSize(new LogicalSize(WINDOW_FIXED_WIDTH, WINDOW_MAX_HEIGHT));
+        await appWindow.setSize(new LogicalSize(WINDOW_FIXED_WIDTH, nextHeight));
+      } catch {
+        // Best effort sync; window size update failure should not block UI.
+      }
+    };
+
+    const scheduleResize = () => {
+      clearResizeRaf();
+      resizeRafRef.current = window.requestAnimationFrame(() => {
+        void applyWindowSize();
+      });
+    };
+
+    scheduleResize();
+
+    if (panelRef.current && typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => {
+        scheduleResize();
+      });
+      observer.observe(panelRef.current);
+    }
+
+    return () => {
+      active = false;
+      clearResizeRaf();
+      observer?.disconnect();
+    };
+  }, [panelAnimateKey]);
 
   useEffect(() => {
-    if (stage !== "ERROR") {
+    if (!errorMessage) {
       clearErrorTimer();
+      setErrorAutoAction("none");
       return;
     }
 
     clearErrorTimer();
     errorTimerRef.current = window.setTimeout(() => {
-      if (errorAction === "terminate-session") {
+      setErrorMessage(null);
+      if (errorAutoAction === "terminate-session") {
         void terminateSession();
-        return;
+      } else {
+        setStage("INPUT");
       }
-
-      setStage("INPUT");
-      setErrorText("");
-      setShowGoSettingsButton(false);
-      setErrorAction("recover-input");
+      setErrorAutoAction("none");
     }, ERROR_DISPLAY_MS);
 
     return () => {
       clearErrorTimer();
     };
-  }, [clearErrorTimer, errorAction, stage, terminateSession]);
+  }, [clearErrorTimer, errorAutoAction, errorMessage, terminateSession]);
 
   useEffect(() => {
     if (!isCustomRoleEditing) {
@@ -503,7 +577,11 @@ function App() {
       }
 
       if (event.key === "Enter" && !event.shiftKey) {
-        if (stage === "INPUT" || stage === "ERROR") {
+        if (stage === "INPUT") {
+          if (errorMessage) {
+            event.preventDefault();
+            return;
+          }
           event.preventDefault();
           void startGenerating();
           return;
@@ -526,14 +604,14 @@ function App() {
     isSettingsOpen,
     openSettings,
     stage,
+    errorMessage,
     startCustomRoleEditing,
     startGenerating,
     terminateSession,
   ]);
 
-  const controlsVisible = stage === "INPUT" || stage === "IDLE" || stage === "ERROR";
-  const resultVisible =
-    stage === "GENERATING" || stage === "FINISHED" || stage === "ERROR";
+  const controlsVisible = stage === "INPUT" || stage === "IDLE";
+  const resultVisible = stage === "GENERATING" || stage === "FINISHED";
   const panelWidthClass = resultVisible
     ? "w-[96vw] max-w-[980px]"
     : "w-[92vw] max-w-[720px]";
@@ -542,6 +620,7 @@ function App() {
     <div className="relative flex h-full w-full items-center justify-center overflow-hidden p-4">
       <motion.section
         key={panelAnimateKey}
+        ref={panelRef}
         initial={{ y: 20, opacity: 0, scale: 0.95 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
@@ -690,7 +769,8 @@ function App() {
                       <button
                         type="button"
                         onClick={() => void startGenerating()}
-                        className="mt-3 w-full rounded-[14px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25"
+                        disabled={isStreaming || !!errorMessage}
+                        className="mt-3 w-full rounded-[14px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-2 text-sm font-medium text-cyan-100 transition hover:bg-cyan-300/25 disabled:cursor-not-allowed disabled:opacity-55"
                       >
                         ✨ 生成回复
                       </button>
@@ -709,73 +789,38 @@ function App() {
                     className="mt-4 overflow-hidden"
                   >
                     <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
-                      {stage === "ERROR" ? (
-                        <div className="rounded-[14px] border border-rose-300/35 bg-rose-300/10 p-3">
-                          <div className="flex items-start gap-2">
-                            <span className="text-sm text-rose-200">❌</span>
-                            <div>
-                              <p className="text-xs text-rose-200">生成失败</p>
-                              <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-rose-100">
-                                {errorText || "请求失败，请稍后重试。"}
-                              </p>
-                            </div>
-                          </div>
+                      <p className="mb-2 text-xs text-zinc-400">结果展示区</p>
+                      <p className="whitespace-pre-wrap text-sm leading-7 text-zinc-100">
+                        {streamedText}
+                        {isStreaming && <span className="zen-cursor ml-1">▌</span>}
+                      </p>
 
-                          <div className="mt-3 flex items-center justify-end gap-2">
-                            {showGoSettingsButton && (
-                              <button
-                                type="button"
-                                onClick={() => void openSettings()}
-                                className="rounded-[12px] border border-cyan-300/45 bg-cyan-300/15 px-3 py-1.5 text-xs font-medium text-cyan-100 transition hover:bg-cyan-300/25"
-                              >
-                                去设置
-                              </button>
-                            )}
+                      <AnimatePresence>
+                        {stage === "FINISHED" && (
+                          <motion.div
+                            initial={{ opacity: 0, x: 16, y: 8 }}
+                            animate={{ opacity: 1, x: 0, y: 0 }}
+                            exit={{ opacity: 0, x: 12, y: 4 }}
+                            transition={{ duration: 0.2 }}
+                            className="mt-4 flex items-center justify-end gap-2"
+                          >
                             <button
                               type="button"
-                              onClick={() => void startGenerating()}
-                              className="rounded-[12px] border border-rose-300/45 bg-rose-300/20 px-3 py-1.5 text-xs font-medium text-rose-100 transition hover:bg-rose-300/30"
+                              onClick={() => void terminateSession()}
+                              className="rounded-[12px] border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-zinc-200 transition hover:border-white/30"
                             >
-                              重试
+                              Esc 取消
                             </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <p className="mb-2 text-xs text-zinc-400">结果展示区</p>
-                          <p className="whitespace-pre-wrap text-sm leading-7 text-zinc-100">
-                            {streamedText}
-                            {isStreaming && <span className="zen-cursor ml-1">▌</span>}
-                          </p>
-
-                          <AnimatePresence>
-                            {stage === "FINISHED" && (
-                              <motion.div
-                                initial={{ opacity: 0, x: 16, y: 8 }}
-                                animate={{ opacity: 1, x: 0, y: 0 }}
-                                exit={{ opacity: 0, x: 12, y: 4 }}
-                                transition={{ duration: 0.2 }}
-                                className="mt-4 flex items-center justify-end gap-2"
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => void terminateSession()}
-                                  className="rounded-[12px] border border-white/15 bg-white/5 px-3 py-1.5 text-xs text-zinc-200 transition hover:border-white/30"
-                                >
-                                  Esc 取消
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => void confirmAndCopy()}
-                                  className="rounded-[12px] border border-emerald-300/50 bg-emerald-300/20 px-3 py-1.5 text-xs font-medium text-emerald-100 transition hover:bg-emerald-300/30"
-                                >
-                                  ↵ 确认并复制
-                                </button>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </>
-                      )}
+                            <button
+                              type="button"
+                              onClick={() => void confirmAndCopy()}
+                              className="rounded-[12px] border border-emerald-300/50 bg-emerald-300/20 px-3 py-1.5 text-xs font-medium text-emerald-100 transition hover:bg-emerald-300/30"
+                            >
+                              ↵ 确认并复制
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </motion.section>
                 )}
@@ -880,6 +925,8 @@ function App() {
           </motion.main>
         </div>
       </motion.section>
+
+      <ErrorToast message={errorMessage} />
 
       <AnimatePresence>
         {toastText && (
