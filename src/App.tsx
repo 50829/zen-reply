@@ -40,8 +40,6 @@ type ClipboardPayload = {
   text: string;
 };
 
-type ErrorAutoAction = "none" | "terminate-session";
-
 function toErrorMessage(error: unknown): string {
   if (typeof error === "string") {
     return error;
@@ -72,7 +70,6 @@ function App() {
   const [settingsFeedback, setSettingsFeedback] = useState("");
   const [isSettingsBusy, setIsSettingsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [errorAutoAction, setErrorAutoAction] = useState<ErrorAutoAction>("none");
   const hideTimerRef = useRef<number | null>(null);
   const errorTimerRef = useRef<number | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
@@ -186,12 +183,8 @@ function App() {
     }
   }, [settingsDraft]);
 
-  const showError = useCallback((
-    message: string,
-    action: ErrorAutoAction = "none",
-  ) => {
+  const showError = useCallback((message: string) => {
     setErrorMessage(message);
-    setErrorAutoAction(action);
   }, []);
 
   const resetFlow = useCallback(() => {
@@ -209,7 +202,6 @@ function App() {
     setToastText("");
     setSettingsFeedback("");
     setErrorMessage(null);
-    setErrorAutoAction("none");
     setIsSettingsOpen(false);
     setStage("IDLE");
   }, [clearErrorTimer, clearHideTimer, resetStream, stopStream]);
@@ -250,7 +242,6 @@ function App() {
       resetStream();
       setToastText("");
       setErrorMessage(null);
-      setErrorAutoAction("none");
       setRawText(incomingText.trim());
       setContextText("");
       setCustomRoleDraft("");
@@ -265,7 +256,7 @@ function App() {
     try {
       if (!rawText.trim()) {
         setStage("INPUT");
-        showError(EMPTY_TEXT_ERROR, "terminate-session");
+        showError(EMPTY_TEXT_ERROR);
         return;
       }
 
@@ -306,7 +297,6 @@ function App() {
 
       setToastText("");
       setErrorMessage(null);
-      setErrorAutoAction("none");
       setIsSettingsOpen(false);
       setStage("GENERATING");
       startStream(prompt, {
@@ -493,25 +483,19 @@ function App() {
   useEffect(() => {
     if (!errorMessage) {
       clearErrorTimer();
-      setErrorAutoAction("none");
       return;
     }
 
     clearErrorTimer();
     errorTimerRef.current = window.setTimeout(() => {
       setErrorMessage(null);
-      if (errorAutoAction === "terminate-session") {
-        void terminateSession();
-      } else {
-        setStage("INPUT");
-      }
-      setErrorAutoAction("none");
+      setStage("INPUT");
     }, ERROR_DISPLAY_MS);
 
     return () => {
       clearErrorTimer();
     };
-  }, [clearErrorTimer, errorAutoAction, errorMessage, terminateSession]);
+  }, [clearErrorTimer, errorMessage]);
 
   useEffect(() => {
     if (!isCustomRoleEditing) {
@@ -576,7 +560,7 @@ function App() {
         }
       }
 
-      if (event.key === "Enter" && !event.shiftKey) {
+      if (event.key === "Enter" && !event.shiftKey && !isTyping) {
         if (stage === "INPUT") {
           if (errorMessage) {
             event.preventDefault();
@@ -654,9 +638,18 @@ function App() {
             <div className="flex-1">
               <section className="rounded-[16px] border border-white/10 bg-white/[0.03] p-3">
                 <p className="mb-2 text-xs text-zinc-400">原始文本</p>
-                <p className="zen-scrollbar max-h-28 min-h-[3rem] overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
-                  {rawText || "请在聊天框选中文本后按 Alt+Space"}
-                </p>
+                {stage === "INPUT" ? (
+                  <textarea
+                    value={rawText}
+                    onChange={(event) => setRawText(event.currentTarget.value)}
+                    placeholder="请在聊天框选中文本后按 Alt+Space，或直接在此输入"
+                    className="zen-scrollbar min-h-[5rem] w-full resize-y rounded-[12px] border border-white/10 bg-white/[0.02] px-2 py-2 text-sm leading-6 text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
+                  />
+                ) : (
+                  <p className="zen-scrollbar max-h-28 min-h-[3rem] overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-6 text-zinc-100">
+                    {rawText || "请在聊天框选中文本后按 Alt+Space"}
+                  </p>
+                )}
               </section>
 
               <AnimatePresence initial={false}>
