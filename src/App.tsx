@@ -17,13 +17,12 @@ const WINDOW_VERTICAL_PADDING = 32;
 
 function App() {
   const panelRef = useRef<HTMLElement | null>(null);
+  const clearBlockingErrorRef = useRef<() => void>(() => {});
 
   const { toast, showToast } = useToast({
     onDismiss: (variant) => {
-      // When an error toast auto-dismisses, fall back to INPUT stage
       if (variant === "error") {
-        // The flow hook watches hasBlockingError; clearing here is
-        // handled by the flow's own onWake / clearError calls.
+        clearBlockingErrorRef.current();
       }
     },
   });
@@ -51,6 +50,7 @@ function App() {
     isCustomRoleEditing,
     panelAnimateKey,
     hasBlockingError,
+    clearError,
     streamedText,
     isStreaming,
     roleMeta,
@@ -75,6 +75,8 @@ function App() {
       [syncSettingsFromStore, setIsSettingsOpen, showToast],
     ),
   );
+
+  clearBlockingErrorRef.current = clearError;
 
   // ── Async-to-void wrappers for callbacks passed to shortcuts / children ──
 

@@ -332,6 +332,7 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     setRawText,
     setCustomRoleDraft,
     setContextText,
+    clearError,
 
     // Actions
     startGenerating,
