@@ -6,7 +6,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { AnimatePresence, motion } from "framer-motion";
 import { ErrorToast } from "./components/feedback/ErrorToast";
 import { ToastBar } from "./components/feedback/ToastBar";
-import { SettingsDrawer } from "./components/settings/SettingsDrawer";
+import { SettingsPanel } from "./components/settings/SettingsPanel";
 import { ResultCard } from "./components/zenreply/ResultCard";
 import { RoleComposer } from "./components/zenreply/RoleComposer";
 import { SourceTextCard } from "./components/zenreply/SourceTextCard";
@@ -77,10 +77,13 @@ function App() {
   const [settingsDraft, setSettingsDraft] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [settingsFeedback, setSettingsFeedback] = useState("");
   const [isSettingsBusy, setIsSettingsBusy] = useState(false);
+  const [flipHeight, setFlipHeight] = useState(WINDOW_MIN_HEIGHT);
 
   const hideTimerRef = useRef<number | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
   const previousPresetRoleRef = useRef<Exclude<TargetRole, "custom">>("boss");
+  const frontRef = useRef<HTMLDivElement>(null);
+  const backRef = useRef<HTMLDivElement>(null);
 
   const {
     streamedText,
@@ -452,6 +455,21 @@ function App() {
     showError(streamError);
   }, [showError, streamError]);
 
+  // ── Measure active face height for 3D flip ──
+  useEffect(() => {
+    const measure = () => {
+      const el = isSettingsOpen ? backRef.current : frontRef.current;
+      const h = el?.offsetHeight ?? 0;
+      if (h > 0) setFlipHeight(h);
+    };
+    measure();
+
+    const observer = new ResizeObserver(measure);
+    if (frontRef.current) observer.observe(frontRef.current);
+    if (backRef.current) observer.observe(backRef.current);
+    return () => observer.disconnect();
+  }, [isSettingsOpen]);
+
   useAutoResizeWindow({
     panelRef,
     triggerKey: panelAnimateKey,
@@ -482,102 +500,138 @@ function App() {
     : "w-[92vw] max-w-[720px]";
 
   return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden p-4">
+    <div
+      className="relative flex h-full w-full items-center justify-center overflow-hidden p-4"
+      style={{ perspective: 1200 }}
+    >
       <motion.section
         key={panelAnimateKey}
         ref={panelRef}
         initial={{ y: 20, opacity: 0, scale: 0.95 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+        style={{ transformStyle: "preserve-3d" }}
         className={`transition-[max-width,width] duration-300 ${panelWidthClass}`}
       >
-        <div className="rounded-[24px] border border-white/30 bg-white/[0.08] p-[2px] shadow-[0_20px_70px_rgba(255,255,255,0.12)]">
-          <motion.main className="relative flex w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-black/86 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.14),inset_0_-1px_0_rgba(255,255,255,0.05),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(34,211,238,0.15)]">
-            <header className="mb-4 flex shrink-0 items-center justify-between">
-              <div>
-                <h1 className="text-xl font-semibold tracking-tight">ZenReply</h1>
-                <p className="mt-1 text-xs text-zinc-400">
-                  Alt+Space 唤醒，Enter 生成/确认，Esc 取消，Ctrl/Cmd + , 设置
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  title="打开设置 (Ctrl/Cmd + ,)"
-                  aria-label="打开设置"
-                  onClick={handleOpenSettings}
-                  className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[13px] text-zinc-200 transition hover:border-cyan-300/50 hover:text-cyan-100"
-                >
-                  ⚙
-                </button>
-                <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-zinc-300">
-                  {stageLabel}
-                </span>
-              </div>
-            </header>
+        {/* ── Flip Body ── */}
+        <motion.div
+          className="relative w-full"
+          style={{ transformStyle: "preserve-3d" }}
+          animate={{
+            rotateY: isSettingsOpen ? 180 : 0,
+            height: flipHeight,
+          }}
+          transition={{
+            rotateY: { type: "spring", stiffness: 70, damping: 16 },
+            height: { type: "spring", stiffness: 170, damping: 24 },
+          }}
+        >
+          {/* ===== FRONT FACE: Work Area ===== */}
+          <div
+            ref={frontRef}
+            className="zen-flip-face absolute inset-x-0 top-0 w-full"
+            style={{ pointerEvents: isSettingsOpen ? "none" : "auto" }}
+          >
+            <div className="rounded-[24px] border border-white/30 bg-white/[0.08] p-[2px] shadow-[0_20px_70px_rgba(255,255,255,0.12)]">
+              <main className="relative flex w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-black/86 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.14),inset_0_-1px_0_rgba(255,255,255,0.05),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(34,211,238,0.15)]">
+                <header className="mb-4 flex shrink-0 items-center justify-between">
+                  <div>
+                    <h1 className="text-xl font-semibold tracking-tight">ZenReply</h1>
+                    <p className="mt-1 text-xs text-zinc-400">
+                      Alt+Space 唤醒，Enter 生成/确认，Esc 取消，Ctrl/Cmd + , 设置
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <motion.button
+                      type="button"
+                      title="打开设置 (Ctrl/Cmd + ,)"
+                      aria-label="打开设置"
+                      onClick={handleOpenSettings}
+                      animate={{ rotate: isSettingsOpen ? 180 : 0 }}
+                      transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                      className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[13px] text-zinc-200 transition-colors hover:border-cyan-300/50 hover:text-cyan-100"
+                    >
+                      ⚙
+                    </motion.button>
+                    <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-[11px] text-zinc-300">
+                      {stageLabel}
+                    </span>
+                  </div>
+                </header>
 
-            <div className="flex-1">
-              <SourceTextCard
-                stage={stage}
-                rawText={rawText}
-                onRawTextChange={setRawText}
-              />
-
-              <AnimatePresence initial={false}>
-                {controlsVisible ? (
-                  <motion.section
-                    initial={{ height: 0, opacity: 0, y: -10 }}
-                    animate={{ height: "auto", opacity: 1, y: 0 }}
-                    exit={{ height: 0, opacity: 0, y: -12 }}
-                    transition={{ duration: 0.24, ease: "easeOut" }}
-                    className="overflow-hidden"
-                  >
-                    <RoleComposer
-                      targetRole={targetRole}
-                      customRoleName={customRoleName}
-                      customRoleDraft={customRoleDraft}
-                      isCustomRoleEditing={isCustomRoleEditing}
-                      contextText={contextText}
-                      roleVibe={roleMeta?.vibe}
-                      isStreaming={isStreaming}
-                      hasError={Boolean(errorMessage)}
-                      onSelectPresetRole={selectPresetRole}
-                      onStartCustomRoleEditing={startCustomRoleEditing}
-                      onCustomRoleDraftChange={setCustomRoleDraft}
-                      onCancelCustomRoleEditing={cancelCustomRoleEditing}
-                      onConfirmCustomRole={confirmCustomRole}
-                      onContextTextChange={setContextText}
-                      onGenerate={handleStartGenerating}
-                    />
-                  </motion.section>
-                ) : null}
-              </AnimatePresence>
-
-              <AnimatePresence initial={false}>
-                {resultVisible ? (
-                  <ResultCard
+                <div className="flex-1">
+                  <SourceTextCard
                     stage={stage}
-                    streamedText={streamedText}
-                    isStreaming={isStreaming}
-                    onCancel={handleTerminateSession}
-                    onConfirmAndCopy={handleConfirmAndCopy}
+                    rawText={rawText}
+                    onRawTextChange={setRawText}
                   />
-                ) : null}
-              </AnimatePresence>
-            </div>
 
-            <SettingsDrawer
-              isOpen={isSettingsOpen}
+                  <AnimatePresence initial={false}>
+                    {controlsVisible ? (
+                      <motion.section
+                        initial={{ height: 0, opacity: 0, y: -10 }}
+                        animate={{ height: "auto", opacity: 1, y: 0 }}
+                        exit={{ height: 0, opacity: 0, y: -12 }}
+                        transition={{ duration: 0.24, ease: "easeOut" }}
+                        className="overflow-hidden"
+                      >
+                        <RoleComposer
+                          targetRole={targetRole}
+                          customRoleName={customRoleName}
+                          customRoleDraft={customRoleDraft}
+                          isCustomRoleEditing={isCustomRoleEditing}
+                          contextText={contextText}
+                          roleVibe={roleMeta?.vibe}
+                          isStreaming={isStreaming}
+                          hasError={Boolean(errorMessage)}
+                          onSelectPresetRole={selectPresetRole}
+                          onStartCustomRoleEditing={startCustomRoleEditing}
+                          onCustomRoleDraftChange={setCustomRoleDraft}
+                          onCancelCustomRoleEditing={cancelCustomRoleEditing}
+                          onConfirmCustomRole={confirmCustomRole}
+                          onContextTextChange={setContextText}
+                          onGenerate={handleStartGenerating}
+                        />
+                      </motion.section>
+                    ) : null}
+                  </AnimatePresence>
+
+                  <AnimatePresence initial={false}>
+                    {resultVisible ? (
+                      <ResultCard
+                        stage={stage}
+                        streamedText={streamedText}
+                        isStreaming={isStreaming}
+                        onCancel={handleTerminateSession}
+                        onConfirmAndCopy={handleConfirmAndCopy}
+                      />
+                    ) : null}
+                  </AnimatePresence>
+                </div>
+              </main>
+            </div>
+          </div>
+
+          {/* ===== BACK FACE: Settings ===== */}
+          <div
+            ref={backRef}
+            className="zen-flip-face absolute inset-x-0 top-0 w-full"
+            style={{
+              transform: "rotateY(180deg)",
+              pointerEvents: isSettingsOpen ? "auto" : "none",
+            }}
+          >
+            <SettingsPanel
               settingsDraft={settingsDraft}
               settingsFeedback={settingsFeedback}
               isSettingsBusy={isSettingsBusy}
-              onClose={closeSettings}
+              onFlipBack={closeSettings}
               onFieldChange={onSettingsFieldChange}
               onSave={handleSaveSettings}
               onTestApi={handleTestApi}
             />
-          </motion.main>
-        </div>
+          </div>
+        </motion.div>
       </motion.section>
 
       <ErrorToast message={errorMessage} />

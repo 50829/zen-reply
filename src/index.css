@@ -68,3 +68,9 @@ body {
     opacity: 0;
   }
 }
+
+/* ── 3D Flip Card ── */
+.zen-flip-face {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
