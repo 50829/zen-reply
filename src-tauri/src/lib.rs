@@ -189,10 +189,7 @@ pub fn run() {
                 })?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            hide_window,
-            test_api_connection,
-        ])
+        .invoke_handler(tauri::generate_handler![hide_window, test_api_connection,])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
