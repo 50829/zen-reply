@@ -38,7 +38,7 @@ export function SettingsPanel({
             onClick={onFlipBack}
             className="rounded-full border border-violet-300/25 bg-violet-300/10 px-3 py-1.5 text-xs text-violet-200 transition hover:border-violet-300/45 hover:bg-violet-300/20 active:scale-95"
           >
-            ↩ 返回
+            ↩ 
           </button>
         </header>
 
@@ -48,21 +48,21 @@ export function SettingsPanel({
             label="API Key"
             type="password"
             value={settingsDraft.api_key}
-            placeholder="sk-..."
+            placeholder="例如：sk-abcdefg..."
             onChange={(v) => onFieldChange("api_key", v)}
           />
           <ClearableField
             label="API Base URL"
             type="text"
             value={settingsDraft.api_base}
-            placeholder="https://api.siliconflow.cn/v1"
+            placeholder="例如：https://api.siliconflow.cn/v1"
             onChange={(v) => onFieldChange("api_base", v)}
           />
           <ClearableField
             label="模型名称"
             type="text"
             value={settingsDraft.model_name}
-            placeholder="Pro/MiniMaxAI/MiniMax-M2.5"
+            placeholder="例如：Pro/MiniMaxAI/MiniMax-M2.5"
             onChange={(v) => onFieldChange("model_name", v)}
           />
         </div>
