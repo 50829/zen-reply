@@ -30,7 +30,7 @@ export function SettingsPanel({
               </span>
             </h1>
             <p className="mt-1 text-xs text-zinc-400">
-              API 密钥保存在本地，不会上传到任何服务器
+              设置保存在本地，Ctrl/Cmd + S 保存设置，Esc 返回
             </p>
           </div>
           <button
@@ -71,26 +71,21 @@ export function SettingsPanel({
         <div className="mt-5 flex items-center gap-2">
           <button
             type="button"
-            onClick={onSave}
+            onClick={onTestApi}
             disabled={isSettingsBusy}
             className="rounded-[12px] border border-violet-300/40 bg-violet-300/15 px-4 py-2 text-xs font-medium text-violet-100 transition hover:bg-violet-300/25 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
           >
-            保存设置
+            测试连接
           </button>
           <button
             type="button"
-            onClick={onTestApi}
+            onClick={onSave}
             disabled={isSettingsBusy}
             className="rounded-[12px] border border-emerald-300/35 bg-emerald-300/10 px-4 py-2 text-xs font-medium text-emerald-200 transition hover:bg-emerald-300/20 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
           >
-            测试连接
+            保存设置
           </button>
         </div>
-
-        {/* Hint */}
-        <p className="mt-3 text-xs text-zinc-500">
-          Ctrl/Cmd + S 保存  ·  Ctrl/Cmd + , 切换面板  ·  Esc 关闭
-        </p>
 
         {/* Bottom gradient accent */}
         <div className="pointer-events-none absolute -bottom-px left-1/2 h-[1px] w-2/3 -translate-x-1/2 bg-gradient-to-r from-transparent via-violet-400/25 to-transparent" />
