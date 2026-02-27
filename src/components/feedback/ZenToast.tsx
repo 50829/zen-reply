@@ -11,22 +11,22 @@ const VARIANT_STYLES: Record<
   { border: string; bg: string; text: string; iconClass: string; glow: string }
 > = {
   error: {
-    border: "border-red-500/20",
-    bg: "bg-red-500/10",
+    border: "border-red-300/35",
+    bg: "bg-red-300/15",
     text: "text-red-200",
     iconClass: "text-red-300/90",
     glow: "shadow-[0_0_28px_rgba(239,68,68,0.15)]",
   },
   success: {
-    border: "border-emerald-400/25",
-    bg: "bg-emerald-500/10",
+    border: "border-emerald-300/35",
+    bg: "bg-emerald-300/15",
     text: "text-emerald-200",
     iconClass: "text-emerald-300/90",
     glow: "shadow-[0_0_28px_rgba(52,211,153,0.12)]",
   },
   info: {
-    border: "border-cyan-400/25",
-    bg: "bg-cyan-500/10",
+    border: "border-cyan-300/35",
+    bg: "bg-cyan-300/15",
     text: "text-cyan-200",
     iconClass: "text-cyan-300/90",
     glow: "shadow-[0_0_28px_rgba(34,211,238,0.12)]",

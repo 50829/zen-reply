@@ -17,8 +17,8 @@ import { toErrorMessage } from "../shared/utils";
 
 const CLIPBOARD_EVENT = "zenreply://clipboard-text";
 const CLIPBOARD_CAPTURED_EVENT = "zenreply://clipboard-captured";
-const MISSING_API_KEY_ERROR = "请先设置 API Key 以开启魔法。";
-const EMPTY_TEXT_ERROR = "请先选中文本后再按 Alt+Space 唤起窗口。";
+const MISSING_API_KEY_ERROR = "请先设置 API Key";
+const EMPTY_TEXT_ERROR = "原始文本不能为空";
 
 type ClipboardPayload = {
   text: string;

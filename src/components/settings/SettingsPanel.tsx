@@ -73,7 +73,7 @@ export function SettingsPanel({
             type="button"
             onClick={onTestApi}
             disabled={isSettingsBusy}
-            className="rounded-[12px] border border-violet-300/40 bg-violet-300/15 px-4 py-2 text-xs font-medium text-violet-100 transition hover:bg-violet-300/25 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
+            className="rounded-[12px] border border-violet-300/45 bg-violet-300/15 px-4 py-2 text-xs font-medium text-violet-100 transition hover:bg-violet-300/25 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
           >
             测试连接
           </button>
@@ -81,7 +81,7 @@ export function SettingsPanel({
             type="button"
             onClick={onSave}
             disabled={isSettingsBusy}
-            className="rounded-[12px] border border-emerald-300/35 bg-emerald-300/10 px-4 py-2 text-xs font-medium text-emerald-200 transition hover:bg-emerald-300/20 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
+            className="rounded-[12px] border border-emerald-300/45 bg-emerald-300/15 px-4 py-2 text-xs font-medium text-emerald-200 transition hover:bg-emerald-300/25 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50"
           >
             保存设置
           </button>
