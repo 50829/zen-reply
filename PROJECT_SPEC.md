@@ -3,131 +3,258 @@
 项目技术规范（核心）
 
 状态：Active  
+更新时间：2026-02-27  
 适用范围：本仓库全部代码（`src/`、`src-tauri/`、配置文件、脚本、文档）  
 规范级别：`MUST`（强制） / `SHOULD`（建议） / `MAY`（可选）
+
+---
 
 ## 1. 目标与原则
 
 - `MUST` 以可维护、可测试、可发布为第一目标。
 - `MUST` 保持跨端一致性（前端 React/TS 与 Rust/Tauri 在接口、错误语义、日志语义上统一）。
-- `MUST` 避免“能跑就行”式实现，所有关键路径必须可观测、可回归验证。
+- `MUST` 避免"能跑就行"式实现，所有关键路径必须可观测、可回归验证。
+
+---
 
 ## 2. 技术基线
 
-- `MUST` 前端使用 React + TypeScript + Vite。
-- `MUST` 桌面壳与系统能力使用 Tauri v2 + Rust。
-- `MUST` 使用 Bun 作为 JS 依赖安装与脚本执行工具（与现有项目一致）。
+| 层 | 技术 | 版本要求 |
+|---|---|---|
+| 桌面壳 | Tauri v2 + Rust | Rust stable (edition 2021) |
+| 前端 | React 19 + TypeScript + Vite | Node.js 18+, Bun 1.x |
+| 样式 | Tailwind CSS v4 | |
+| 动画 | Framer Motion | |
+| 图标 | Lucide React | |
+| 键模拟 | enigo 0.2 | |
+| HTTP | 前端 fetch (SSE) / Rust reqwest (测试连接) | |
+
+- `MUST` 使用 Bun 作为 JS 依赖安装与脚本执行工具。
 - `MUST` 锁定依赖：前端依赖通过 `bun.lock`，Rust 依赖通过 `Cargo.lock`。
-- `SHOULD` 保持 Node.js 18+、Bun 1.x、Rust stable。
 
-## 3. 目录与模块边界
+---
 
-- `MUST` 前端业务代码放在 `src/`，Rust 后端代码放在 `src-tauri/src/`。
-- `MUST` 将“能力边界”拆分清晰：
-- 前端 UI/状态逻辑与 Prompt 规则分离。
-- Rust 侧命令注册、系统能力、模型调用分层。
-- `SHOULD` 新功能按 `feature` 拆目录，避免所有逻辑堆在单文件。
+## 3. 架构设计
 
-## 4. 代码格式与风格
+### 3.1 总体分层
 
-### 4.1 缩进与空白
+```
+┌────────────────────────────────────────────────────────┐
+│ Tauri Window (transparent, decorations=false)          │
+│                                                        │
+│  ┌─────────────── React App ────────────────────────┐  │
+│  │ App.tsx (组合根)                                  │  │
+│  │   ├── useToast          → ZenToast               │  │
+│  │   ├── useSettings       → SettingsPanel (背面)   │  │
+│  │   ├── useZenReplyFlow   → WorkArea (正面)        │  │
+│  │   ├── useGlobalShortcuts                         │  │
+│  │   ├── useAutoResizeWindow                        │  │
+│  │   └── FlipCard (3D 翻转容器)                     │  │
+│  └──────────────────────────────────────────────────┘  │
+│                                                        │
+│  ┌─────────────── Rust Backend ─────────────────────┐  │
+│  │ lib.rs                                            │  │
+│  │   ├── on_shortcut_pressed  (全局快捷键 → 唤醒)   │  │
+│  │   ├── capture_selected_text (enigo Ctrl+C)        │  │
+│  │   ├── hide_window          (Tauri command)        │  │
+│  │   └── test_api_connection  (Tauri command)        │  │
+│  └──────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────┘
+```
+
+### 3.2 职责边界
+
+| 职责 | 归属 | 说明 |
+|---|---|---|
+| 全局快捷键、窗口生命周期 | Rust | `global-shortcut` + `window.show/hide` |
+| 选区捕获（模拟 Ctrl+C） | Rust | enigo，必须在 `window.show()` 前执行 |
+| AI 流式请求 | 前端 | `useLlmStream.ts` → fetch SSE |
+| API 测试 | Rust | `test_api_connection` command，因为前端需要走 Tauri 命令才能绕过 CORS |
+| 设置持久化 | 前端 | `@tauri-apps/plugin-store` |
+| 剪贴板写入（结果复制） | 前端 | `@tauri-apps/plugin-clipboard-manager` |
+| UI 状态管理 | 前端 | React hooks（无外部状态库） |
+
+- `MUST` 前端不直接操作窗口可见性（需通过 `invoke("hide_window")` 或 fallback `getCurrentWindow().hide()`）。
+- `MUST` Rust 侧不持有业务状态（仅透传剪贴板文本）。
+
+### 3.3 事件通信
+
+Rust → React 通过 Tauri `emit`，React → Rust 通过 `invoke`。
+
+| 事件名 | 方向 | 含义 |
+|---|---|---|
+| `zenreply://clipboard-text` | Rust → React | 唤醒面板，payload 含已捕获的文本（可能为空） |
+| `zenreply://clipboard-captured` | Rust → React | 异步兜底捕获到文本后补发（仅当快速路径为空时） |
+
+| 命令名 | 方向 | 含义 |
+|---|---|---|
+| `hide_window` | React → Rust | 隐藏窗口 |
+| `test_api_connection` | React → Rust | 测试 API 连通性 |
+
+### 3.4 状态机
+
+```
+         ┌───── Alt+Space (onWake) ─────┐
+         │                              │
+         ▼                              │
+      INPUT ──── startGenerating ──► GENERATING
+         ▲                              │
+         │                              ▼
+         │                          FINISHED
+         │                              │
+         └──────── confirmAndCopy ──────┘
+                   (→ hide → reset)
+
+      任意状态 ──── Esc ──► terminateSession ──► hide + reset
+```
+
+- `MUST` Stage 仅有三个值：`INPUT` | `GENERATING` | `FINISHED`
+- `MUST` 所有错误回退到 `INPUT`（不设独立 ERROR 状态）
+
+---
+
+## 4. 启动流程规范（关键路径）
+
+### 4.1 核心约束
+
+> **`MUST` 模拟按键式剪贴板捕获在 `window.show()` 之前完成。**
+
+原因：enigo 模拟 Ctrl+C 作用于 OS 当前焦点窗口。`window.show()` + `set_focus()` 会将焦点从源应用夺走，导致 Ctrl+C 发送到 ZenReply 窗口而非源应用。
+
+### 4.2 规定的启动时序
+
+```
+Alt+Space Released
+  │
+  ├── 1. 读取剪贴板（记录 previous）
+  ├── 2. sleep 30ms（等待 OS 处理按键释放）
+  ├── 3. enigo Ctrl+C（模拟复制）
+  ├── 4. sleep 50ms（等待源应用处理复制）
+  ├── 5. 读取剪贴板（对比 previous，得到 text）
+  │      总耗时 ~87ms（同步，阻塞但用户不可感知）
+  │
+  ├── 6. window.show() + set_focus()
+  ├── 7. emit("zenreply://clipboard-text", { text })
+  │
+  └── 8. if text.is_empty():
+           thread::spawn → 轮询剪贴板（兜底慢速应用）
+           成功后 emit("zenreply://clipboard-captured", { text })
+```
+
+### 4.3 前端唤醒规范
+
+- `MUST` FlipCard 仅在 `isAwake === true` 时渲染
+- `MUST` `isAwake` 初始为 `false`，`onWake` 设为 `true`，`resetFlow` 设为 `false`
+- `MUST` 收到 `clipboard-text` 事件时调用 `onWake(text)`——重置所有状态 + 填入文本
+- `MUST` 收到 `clipboard-captured` 事件时仅调用 `setRawText(text)`——不重置 UI
+
+### 4.4 动画规范
+
+- `MUST` FlipCard 的 `initial` 始终为固定动画起点 `{ y: 20, opacity: 0, scale: 0.95 }`
+- `MUST` 不使用 `panelAnimateKey === 0 ? false : ...` 等条件 hack
+- `MUST` 通过条件渲染（`isAwake`）确保 FlipCard 在窗口变为可见时从零挂载——只有一次入场动画
+
+---
+
+## 5. 代码格式与风格
+
+### 5.1 缩进与空白
 
 - `MUST` 全仓库禁止 Tab，统一使用空格。
 - `MUST` TypeScript/TSX/CSS/JSON/YAML/Markdown 使用 **2 空格缩进**。
 - `MUST` Rust 使用 **4 空格缩进**（遵循 `rustfmt` 默认风格）。
 - `SHOULD` 单行长度控制在 100 字符以内，超长时换行。
 
-### 4.2 命名约定
+### 5.2 命名约定
 
 - `MUST` TypeScript 变量/函数使用 `camelCase`，组件使用 `PascalCase`，常量使用 `UPPER_SNAKE_CASE`。
 - `MUST` Rust 函数/变量使用 `snake_case`，类型/trait 使用 `PascalCase`，常量使用 `UPPER_SNAKE_CASE`。
-- `MUST` 文件名语义化；React 组件文件使用 `PascalCase.tsx` 或与现有风格保持一致。
+- `MUST` 文件名语义化；React 组件文件使用 `PascalCase.tsx`。
 
-### 4.3 注释语言
+### 5.3 注释语言
 
-- `MUST` 代码注释与文档注释使用 **英文**（团队统一语言，便于工具链与外部协作）。
-- `SHOULD` 遇到中文业务语义（如 Prompt 策略）时，可采用“英文主注释 + 中文补充说明”。
-- `MUST` 禁止无信息量注释（如“set value”），注释必须解释“为什么”，而不是“做了什么”。
-
-## 5. 错误处理与日志
-
-### 5.1 通用约束
-
-- `MUST` 禁止将 `print/println!/eprintln!/console.log` 作为正式错误处理手段。
-- `MUST` 使用统一日志接口记录运行状态与错误（按级别：`debug/info/warn/error`）。
-- `MUST` 错误信息分两层：
-- 面向用户：可理解、可操作（例如“请检查 API Key 配置”）。
-- 面向开发：保留上下文（模块、请求 ID、状态码、原始错误摘要）。
-
-### 5.2 TypeScript/React
-
-- `MUST` 异步流程使用 `try/catch` 或 Promise `catch` 完整收口错误。
-- `MUST` 在边界层处理错误：
-- UI 层负责提示（toast/状态文案）。
-- hook/service 层负责错误归一化与上抛。
-- `MUST` 禁止静默吞错；若确实忽略，必须写明原因注释（`intentionally ignored`）。
-
-### 5.3 Rust/Tauri
-
-- `MUST` 业务函数优先返回 `Result<T, E>`，用 `?` 传播错误。
-- `MUST` 仅在 Tauri 命令边界将错误转换为可传输格式（如 `String`）。
-- `MUST` 运行时路径禁止无理由 `unwrap/expect/panic!`。
-- `SHOULD` 为关键失败点补充错误上下文（接口地址、请求 ID、阶段信息）。
-
-## 6. 安全与配置
-
-- `MUST` 严禁提交真实密钥、令牌、账号等敏感信息到仓库。
-- `MUST` `.env` 保持忽略，`.env.example` 必须与当前运行参数同步。
-- `MUST` 对 Tauri capability 与权限最小化，仅授予实际需要的能力。
-- `SHOULD` 生产构建启用 CSP（避免长期 `csp: null`）。
-
-## 7. 测试策略
-
-- `MUST` 为核心逻辑补充自动化测试：
-- 前端：Prompt 构建、状态流转、关键 hook 行为。
-- Rust：SSE 解析、取消逻辑、错误分支。
-- `MUST` 修复 bug 时同步新增回归测试。
-- `SHOULD` 引入分层测试：单元测试 > 集成测试 > 关键路径 E2E。
-
-## 8. 质量门禁（本地与 CI）
-
-- `MUST` 合并前至少通过：
-- 格式化检查
-- 静态检查（lint）
-- 类型检查（TypeScript）
-- 测试
-- 构建（frontend build + tauri build）
-- `SHOULD` 在 CI 中串联上述门禁，禁止未通过直接合并。
-
-## 9. Git 与变更管理
-
-- `MUST` 使用清晰提交信息（建议 Conventional Commits：`feat/fix/refactor/docs/test/chore`）。
-- `MUST` 单个 PR 聚焦单一主题，避免“混合改动”。
-- `MUST` 影响行为的改动必须附带：
-- 变更说明
-- 风险点
-- 回滚方案（至少描述如何恢复）
-
-## 10. 发布规范（Release）
-
-- `MUST` 遵循语义化版本（SemVer）：`MAJOR.MINOR.PATCH`。
-- `MUST` 发布前执行完整检查清单：
-- 版本号更新
-- Changelog 更新
-- 依赖锁文件同步
-- 质量门禁全绿
-- 配置与密钥检查
-- `SHOULD` 为每个 release 记录已知限制与后续计划。
-
-## 11. 文档维护
-
-- `MUST` 行为变更后同步更新 `README` 与相关规范文档。
-- `SHOULD` 保持示例命令与实际脚本一致，避免文档漂移。
+- `MUST` 代码注释与文档注释使用 **英文**。
+- `SHOULD` 遇到中文业务语义（如 Prompt 策略）时，可采用"英文主注释 + 中文补充说明"。
+- `MUST` 禁止无信息量注释（如"set value"），注释必须解释"为什么"，而不是"做了什么"。
 
 ---
 
-执行建议（下一步）：
+## 6. 错误处理
 
-1. 增加 lint/format/test 脚本并落地到 `package.json` 与 Rust 工具链。  
-2. 建立 `.github/workflows`，把第 8 节质量门禁自动化。  
-3. 在 release 前按第 10 节建立固定 checklist。  
+### 6.1 通用约束
+
+- `MUST` 错误信息分两层：
+  - 面向用户：可理解、可操作（例如"请检查 API Key 配置"）。
+  - 面向开发：保留上下文（模块、状态码、原始错误摘要）。
+
+### 6.2 TypeScript/React
+
+- `MUST` 异步流程使用 `try/catch` 完整收口错误。
+- `MUST` 错误归一化在 hook/service 层（`toErrorMessage`），UI 层只负责展示（Toast）。
+- `MUST` 禁止静默吞错；若确实忽略，必须写明原因注释（`intentionally ignored`）。
+- `MUST` 所有阻塞性错误通过 `hasBlockingError` 禁用生成按钮，Toast 消隐后自动恢复。
+
+### 6.3 Rust/Tauri
+
+- `MUST` 业务函数优先返回 `Result<T, E>`，用 `?` 传播错误。
+- `MUST` 仅在 Tauri 命令边界将错误转换为 `String`。
+- `MUST` 运行时路径禁止无理由 `unwrap/expect/panic!`。
+- `SHOULD` `capture_selected_text` 中的剪贴板读取失败静默降级（返回空字符串），不阻塞启动。
+
+---
+
+## 7. 安全与配置
+
+- `MUST` 严禁提交真实密钥到仓库。
+- `MUST` Tauri capability 最小化授权（当前：core:default, opener:default, clipboard read/write, store:default）。
+- `SHOULD` 生产构建启用 CSP（避免长期 `csp: null`）。
+- `SHOULD` `tauri.conf.json` 中 `productName` 和 `identifier` 在发布前替换为正式品牌值。
+
+---
+
+## 8. 测试策略
+
+- `MUST` 为核心逻辑补充自动化测试：
+  - 前端：Prompt 构建（`prompt.ts`）、错误映射（`utils.ts`）、关键 hook 行为。
+  - Rust：Tauri command 返回值、错误分支。
+- `MUST` 修复 bug 时同步新增回归测试。
+- `SHOULD` 引入分层测试：单元测试 > 集成测试 > 关键路径 E2E。
+
+---
+
+## 9. 质量门禁
+
+- `MUST` 合并前至少通过：
+  - TypeScript 类型检查（`tsc --noEmit`）
+  - Rust 编译检查（`cargo check`）
+  - 构建（`bun run build` + `cargo build`）
+- `SHOULD` 在 CI 中串联上述门禁。
+- `SHOULD` 增加格式化检查和 lint。
+
+---
+
+## 10. Git 与变更管理
+
+- `MUST` 使用清晰提交信息（Conventional Commits：`feat/fix/refactor/docs/test/chore`）。
+- `MUST` 单个 PR/commit 聚焦单一主题。
+- `MUST` 影响用户可感知行为的改动附带变更说明和回滚方案。
+
+---
+
+## 11. 发布规范
+
+- `MUST` 遵循语义化版本（SemVer）：`MAJOR.MINOR.PATCH`。
+- `MUST` 发布前检查清单：
+  - 版本号更新（`package.json` + `tauri.conf.json` + `Cargo.toml`）
+  - 依赖锁文件同步
+  - 质量门禁全绿
+  - CSP 已配置
+  - 品牌配置已更新
+
+---
+
+## 12. 文档维护
+
+- `MUST` 行为变更后同步更新 `PROJECT_HANDOFF.md`（开发交接文档）。
+- `MUST` 架构/规范变更后同步更新本文件（`PROJECT_SPEC.md`）。
+- `SHOULD` 保持示例命令与实际脚本一致。

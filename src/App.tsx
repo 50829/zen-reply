@@ -49,6 +49,7 @@ function App() {
     customRoleDraft,
     isCustomRoleEditing,
     panelAnimateKey,
+    isAwake,
     hasBlockingError,
     clearError,
     streamedText,
@@ -142,50 +143,52 @@ function App() {
 
   return (
     <>
-      <FlipCard
-        isFlipped={isSettingsOpen}
-        panelRef={panelRef}
-        panelAnimateKey={panelAnimateKey}
-        panelWidthClass={panelWidthClass}
-        minHeight={WINDOW_MIN_HEIGHT}
-        front={
-          <WorkArea
-            stage={stage}
-            rawText={rawText}
-            targetRole={targetRole}
-            customRoleName={customRoleName}
-            customRoleDraft={customRoleDraft}
-            isCustomRoleEditing={isCustomRoleEditing}
-            contextText={contextText}
-            roleMeta={roleMeta}
-            streamedText={streamedText}
-            isStreaming={isStreaming}
-            isSettingsOpen={isSettingsOpen}
-            hasBlockingError={hasBlockingError}
-            onRawTextChange={setRawText}
-            onSelectPresetRole={selectPresetRole}
-            onStartCustomRoleEditing={startCustomRoleEditing}
-            onCustomRoleDraftChange={setCustomRoleDraft}
-            onCancelCustomRoleEditing={cancelCustomRoleEditing}
-            onConfirmCustomRole={confirmCustomRole}
-            onContextTextChange={setContextText}
-            onGenerate={handleStartGenerating}
-            onOpenSettings={handleOpenSettings}
-            onCancel={handleTerminateSession}
-            onConfirmAndCopy={handleConfirmAndCopy}
-          />
-        }
-        back={
-          <SettingsPanel
-            settingsDraft={settingsDraft}
-            isSettingsBusy={isSettingsBusy}
-            onFlipBack={closeSettings}
-            onFieldChange={onFieldChange}
-            onSave={handleSaveSettings}
-            onTestApi={handleTestApi}
-          />
-        }
-      />
+      {isAwake ? (
+        <FlipCard
+          isFlipped={isSettingsOpen}
+          panelRef={panelRef}
+          panelAnimateKey={panelAnimateKey}
+          panelWidthClass={panelWidthClass}
+          minHeight={WINDOW_MIN_HEIGHT}
+          front={
+              <WorkArea
+              stage={stage}
+              rawText={rawText}
+              targetRole={targetRole}
+              customRoleName={customRoleName}
+              customRoleDraft={customRoleDraft}
+              isCustomRoleEditing={isCustomRoleEditing}
+              contextText={contextText}
+              roleMeta={roleMeta}
+              streamedText={streamedText}
+              isStreaming={isStreaming}
+              isSettingsOpen={isSettingsOpen}
+              hasBlockingError={hasBlockingError}
+              onRawTextChange={setRawText}
+              onSelectPresetRole={selectPresetRole}
+              onStartCustomRoleEditing={startCustomRoleEditing}
+              onCustomRoleDraftChange={setCustomRoleDraft}
+              onCancelCustomRoleEditing={cancelCustomRoleEditing}
+              onConfirmCustomRole={confirmCustomRole}
+              onContextTextChange={setContextText}
+              onGenerate={handleStartGenerating}
+              onOpenSettings={handleOpenSettings}
+              onCancel={handleTerminateSession}
+              onConfirmAndCopy={handleConfirmAndCopy}
+            />
+          }
+          back={
+            <SettingsPanel
+              settingsDraft={settingsDraft}
+              isSettingsBusy={isSettingsBusy}
+              onFlipBack={closeSettings}
+              onFieldChange={onFieldChange}
+              onSave={handleSaveSettings}
+              onTestApi={handleTestApi}
+            />
+          }
+        />
+      ) : null}
 
       <ZenToast toast={toast} />
     </>

@@ -55,7 +55,7 @@ export function WorkArea({
   onCancel,
   onConfirmAndCopy,
 }: WorkAreaProps) {
-  const controlsVisible = stage === "INPUT" || stage === "IDLE";
+  const controlsVisible = stage === "INPUT";
   const resultVisible = stage === "GENERATING" || stage === "FINISHED";
 
   return (

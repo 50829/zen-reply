@@ -16,6 +16,7 @@ import type { ToastVariant } from "./useToast";
 import { toErrorMessage } from "../shared/utils";
 
 const CLIPBOARD_EVENT = "zenreply://clipboard-text";
+const CLIPBOARD_CAPTURED_EVENT = "zenreply://clipboard-captured";
 const MISSING_API_KEY_ERROR = "请先设置 API Key 以开启魔法。";
 const EMPTY_TEXT_ERROR = "请先选中文本后再按 Alt+Space 唤起窗口。";
 
@@ -31,7 +32,7 @@ export type SettingsDeps = {
 };
 
 export function useZenReplyFlow(settings: SettingsDeps) {
-  const [stage, setStage] = useState<Stage>("IDLE");
+  const [stage, setStage] = useState<Stage>("INPUT");
   const [rawText, setRawText] = useState("");
   const [contextText, setContextText] = useState("");
   const [targetRole, setTargetRole] = useState<TargetRole>("boss");
@@ -40,6 +41,7 @@ export function useZenReplyFlow(settings: SettingsDeps) {
   const [isCustomRoleEditing, setIsCustomRoleEditing] = useState(false);
   const [hasBlockingError, setHasBlockingError] = useState(false);
   const [panelAnimateKey, setPanelAnimateKey] = useState(0);
+  const [isAwake, setIsAwake] = useState(false);
 
   const hideTimerRef = useRef<number | null>(null);
   const previousPresetRoleRef = useRef<Exclude<TargetRole, "custom">>("boss");
@@ -90,7 +92,8 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     setIsCustomRoleEditing(false);
     previousPresetRoleRef.current = "boss";
     settings.setIsSettingsOpen(false);
-    setStage("IDLE");
+    setStage("INPUT");
+    setIsAwake(false);
   }, [clearError, clearHideTimer, resetStream, settings, stopStream]);
 
   const forceHideWindow = useCallback(async (): Promise<boolean> => {
@@ -132,6 +135,7 @@ export function useZenReplyFlow(settings: SettingsDeps) {
       setCustomRoleDraft("");
       setIsCustomRoleEditing(false);
       setStage("INPUT");
+      setIsAwake(true);
       setPanelAnimateKey((value) => value + 1);
     },
     [clearError, clearHideTimer, resetStream, stopStream],
@@ -279,26 +283,33 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     [selectPresetRole],
   );
 
-  // ── Clipboard listener ──
+  // ── Clipboard listeners ──
   useEffect(() => {
-    let unlisten: (() => void) | null = null;
+    let unlistenWake: (() => void) | null = null;
+    let unlistenCapture: (() => void) | null = null;
     let active = true;
 
+    // Primary wake event — window just became visible, reset UI
     void listen<ClipboardPayload>(CLIPBOARD_EVENT, (event) => {
       onWake(event.payload.text || "");
     }).then((cleanup) => {
-      if (!active) {
-        cleanup();
-        return;
-      }
-      unlisten = cleanup;
+      if (!active) { cleanup(); return; }
+      unlistenWake = cleanup;
+    });
+
+    // Async clipboard delivery — arrives after background capture completes
+    void listen<ClipboardPayload>(CLIPBOARD_CAPTURED_EVENT, (event) => {
+      const text = (event.payload.text || "").trim();
+      if (text) setRawText(text);
+    }).then((cleanup) => {
+      if (!active) { cleanup(); return; }
+      unlistenCapture = cleanup;
     });
 
     return () => {
       active = false;
-      if (unlisten) {
-        unlisten();
-      }
+      unlistenWake?.();
+      unlistenCapture?.();
       clearHideTimer();
       stopStream();
     };
@@ -323,6 +334,7 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     customRoleDraft,
     isCustomRoleEditing,
     panelAnimateKey,
+    isAwake,
     hasBlockingError,
     streamedText,
     isStreaming,
