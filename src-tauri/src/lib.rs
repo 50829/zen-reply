@@ -23,17 +23,27 @@ struct ClipboardPayload {
     text: String,
 }
 
-/// Holds references to tray menu items that should be disabled while the
-/// window is visible, preventing duplicate operations.
-struct TrayMenuItems {
-    show: tauri::menu::MenuItem<tauri::Wry>,
-    settings: tauri::menu::MenuItem<tauri::Wry>,
-}
+/// Rebuild the tray menu based on panel visibility.
+/// When the panel is open, only "退出程序" is shown;
+/// when hidden, the full menu (打开主面板 / 打开设置 / 退出程序) is restored.
+fn update_tray_menu<R: tauri::Runtime>(app: &tauri::AppHandle<R>, panel_visible: bool) {
+    let Some(tray) = app.tray_by_id("main-tray") else {
+        return;
+    };
 
-fn set_tray_menu_enabled<R: tauri::Runtime>(app: &tauri::AppHandle<R>, enabled: bool) {
-    let state = app.state::<TrayMenuItems>();
-    let _ = state.show.set_enabled(enabled);
-    let _ = state.settings.set_enabled(enabled);
+    let menu = if panel_visible {
+        let Ok(quit) = MenuItemBuilder::with_id("quit", "退出程序").build(app) else { return };
+        MenuBuilder::new(app).items(&[&quit]).build()
+    } else {
+        let Ok(show) = MenuItemBuilder::with_id("show", "打开主面板").build(app) else { return };
+        let Ok(settings) = MenuItemBuilder::with_id("settings", "打开设置").build(app) else { return };
+        let Ok(quit) = MenuItemBuilder::with_id("quit", "退出程序").build(app) else { return };
+        MenuBuilder::new(app).items(&[&show, &settings, &quit]).build()
+    };
+
+    if let Ok(m) = menu {
+        let _ = tray.set_menu(Some(m));
+    }
 }
 
 fn normalize_optional(value: Option<String>) -> Option<String> {
@@ -81,7 +91,7 @@ fn resolve_api_settings(
 #[tauri::command]
 fn hide_window(window: tauri::WebviewWindow) -> Result<(), String> {
     let result = window.hide().map_err(|err| err.to_string());
-    set_tray_menu_enabled(window.app_handle(), true);
+    update_tray_menu(window.app_handle(), false);
     result
 }
 
@@ -196,8 +206,8 @@ where
         let _ = window.emit(CLIPBOARD_EVENT, ClipboardPayload { text: text.clone() });
     }
 
-    // Disable tray "show"/"settings" while the window is visible.
-    set_tray_menu_enabled(app, false);
+    // Panel is now visible — show minimal tray menu.
+    update_tray_menu(app, true);
 
     // Async fallback: only when the fast path returned nothing.
     if text.is_empty() {
@@ -246,7 +256,7 @@ pub fn run() {
                 .cloned()
                 .expect("default window icon must be set in tauri.conf.json");
 
-            TrayIconBuilder::new()
+            TrayIconBuilder::with_id("main-tray")
                 .icon(tray_icon)
                 .tooltip("ZenReply")
                 .menu(&menu)
@@ -259,7 +269,7 @@ pub fn run() {
                                 let _ = w.unminimize();
                                 let _ = w.set_focus();
                                 let _ = w.emit(TRAY_WAKE_EVENT, ());
-                                set_tray_menu_enabled(app, false);
+                                update_tray_menu(app, true);
                             }
                         }
                         "settings" => {
@@ -268,7 +278,7 @@ pub fn run() {
                                 let _ = w.unminimize();
                                 let _ = w.set_focus();
                                 let _ = w.emit(TRAY_OPEN_SETTINGS_EVENT, ());
-                                set_tray_menu_enabled(app, false);
+                                update_tray_menu(app, true);
                             }
                         }
                         "quit" => {
@@ -294,16 +304,11 @@ pub fn run() {
                             let _ = window.unminimize();
                             let _ = window.set_focus();
                             let _ = window.emit(TRAY_WAKE_EVENT, ());
-                            set_tray_menu_enabled(app, false);
+                            update_tray_menu(app, true);
                         }
                     }
                 })
                 .build(app)?;
-
-            app.manage(TrayMenuItems {
-                show: show_item,
-                settings: settings_item,
-            });
 
             // ── Global shortcut ──
             app.global_shortcut()
@@ -319,7 +324,7 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
-                set_tray_menu_enabled(window.app_handle(), true);
+                update_tray_menu(window.app_handle(), false);
             }
         })
         .invoke_handler(tauri::generate_handler![hide_window, test_api_connection,])

@@ -86,17 +86,37 @@ export function FlipCard({
 
   const [targetHeight, setTargetHeight] = useState(minHeight);
   const [isFlipAnimating, setIsFlipAnimating] = useState(false);
+  /** Synchronous mirror of `isFlipAnimating` — set inside useLayoutEffect
+   *  so ResizeObserver callbacks can read it without waiting for React's
+   *  batched state commit. Prevents the observer from shrinking the window
+   *  during the first frames of a flip. */
+  const isFlipAnimatingRef = useRef(false);
   const prevFlippedRef = useRef(isFlipped);
+  /** Has the user triggered a flip at least once in the current session?
+   *  Used to suppress framer-motion keyframe playback on first mount. */
+  const hasEverFlipped = useRef(false);
   /** Tracks whether a flip has been triggered at least once, so the halo
    *  animation does not fire on initial mount. */
   const flipCountRef = useRef(0);
   const [flipTrigger, setFlipTrigger] = useState(0);
+
+  // ── Reset on new session (panelAnimateKey change → section remount) ──
+  const prevPanelKeyRef = useRef(panelAnimateKey);
+  if (prevPanelKeyRef.current !== panelAnimateKey) {
+    prevPanelKeyRef.current = panelAnimateKey;
+    hasEverFlipped.current = false;
+    prevFlippedRef.current = isFlipped;
+    flipCountRef.current = 0;
+    isFlipAnimatingRef.current = false;
+  }
 
   // On flip trigger: lock height to max and start animating
   useLayoutEffect(() => {
     if (isFlipped !== prevFlippedRef.current) {
       prevFlippedRef.current = isFlipped;
       flipCountRef.current += 1;
+      hasEverFlipped.current = true;
+      isFlipAnimatingRef.current = true;
       setIsFlipAnimating(true);
       setFlipTrigger((n) => n + 1);
 
@@ -119,6 +139,10 @@ export function FlipCard({
     if (isFlipAnimating) return;
 
     const measure = () => {
+      // Synchronous guard: if a flip just started but React's batched
+      // state hasn't committed yet, bail out to preserve expanded height.
+      if (isFlipAnimatingRef.current) return;
+
       const h = isFlipped
         ? (backRef.current?.offsetHeight ?? 0)
         : (frontRef.current?.offsetHeight ?? 0);
@@ -151,9 +175,11 @@ export function FlipCard({
           // Delay window shrink until the card height animation completes
           shrinkTimerRef.current = window.setTimeout(() => {
             onContentHeightChange?.(exactH);
+            isFlipAnimatingRef.current = false;
             setIsFlipAnimating(false);
           }, HEIGHT_TRANSITION.duration * 1000 + 50);
         } else {
+          isFlipAnimatingRef.current = false;
           setIsFlipAnimating(false);
         }
       });
@@ -163,7 +189,14 @@ export function FlipCard({
 
   // ── Build animation values ────────────────────────────────────────
 
+  // On first mount (before any user-triggered flip), use static values
+  // so framer-motion doesn't play the keyframe array as an animation.
   const rotateKeyframes = isFlipped ? FORWARD_ROTATE : BACKWARD_ROTATE;
+  const animateRotateY = hasEverFlipped.current ? rotateKeyframes : (isFlipped ? 180 : 0);
+  const animateScale = hasEverFlipped.current ? FLIP_SCALE : 1;
+  const animateShadow = hasEverFlipped.current
+    ? FLIP_SHADOW
+    : "0 4px 12px rgba(0,0,0,0.18)";
 
   return (
     <div
@@ -186,9 +219,9 @@ export function FlipCard({
           style={{ transformStyle: "preserve-3d", willChange: "transform" }}
           initial={false}
           animate={{
-            rotateY: rotateKeyframes,
-            scale: FLIP_SCALE,
-            boxShadow: FLIP_SHADOW,
+            rotateY: animateRotateY,
+            scale: animateScale,
+            boxShadow: animateShadow,
             height: targetHeight,
           }}
           transition={{
