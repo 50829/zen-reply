@@ -4,6 +4,8 @@ use serde_json::json;
 use std::env;
 use std::thread;
 use std::time::Duration;
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
@@ -11,12 +13,27 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 const ACTIVATION_SHORTCUT: &str = "Alt+Space";
 const CLIPBOARD_EVENT: &str = "zenreply://clipboard-text";
 const CLIPBOARD_CAPTURED_EVENT: &str = "zenreply://clipboard-captured";
+const TRAY_WAKE_EVENT: &str = "zenreply://tray-wake";
+const TRAY_OPEN_SETTINGS_EVENT: &str = "zenreply://tray-open-settings";
 const DEFAULT_API_BASE: &str = "https://api.siliconflow.cn/v1";
 const DEFAULT_MODEL_NAME: &str = "Pro/MiniMaxAI/MiniMax-M2.5";
 
 #[derive(Clone, Serialize)]
 struct ClipboardPayload {
     text: String,
+}
+
+/// Holds references to tray menu items that should be disabled while the
+/// window is visible, preventing duplicate operations.
+struct TrayMenuItems {
+    show: tauri::menu::MenuItem<tauri::Wry>,
+    settings: tauri::menu::MenuItem<tauri::Wry>,
+}
+
+fn set_tray_menu_enabled<R: tauri::Runtime>(app: &tauri::AppHandle<R>, enabled: bool) {
+    let state = app.state::<TrayMenuItems>();
+    let _ = state.show.set_enabled(enabled);
+    let _ = state.settings.set_enabled(enabled);
 }
 
 fn normalize_optional(value: Option<String>) -> Option<String> {
@@ -63,7 +80,9 @@ fn resolve_api_settings(
 
 #[tauri::command]
 fn hide_window(window: tauri::WebviewWindow) -> Result<(), String> {
-    window.hide().map_err(|err| err.to_string())
+    let result = window.hide().map_err(|err| err.to_string());
+    set_tray_menu_enabled(window.app_handle(), true);
+    result
 }
 
 #[tauri::command]
@@ -177,6 +196,9 @@ where
         let _ = window.emit(CLIPBOARD_EVENT, ClipboardPayload { text: text.clone() });
     }
 
+    // Disable tray "show"/"settings" while the window is visible.
+    set_tray_menu_enabled(app, false);
+
     // Async fallback: only when the fast path returned nothing.
     if text.is_empty() {
         let handle = app.clone();
@@ -210,6 +232,80 @@ pub fn run() {
                 let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
             }
 
+            // ── System tray ──
+            let show_item = MenuItemBuilder::with_id("show", "打开主面板").build(app)?;
+            let settings_item = MenuItemBuilder::with_id("settings", "打开设置").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "退出程序").build(app)?;
+
+            let menu = MenuBuilder::new(app)
+                .items(&[&show_item, &settings_item, &quit_item])
+                .build()?;
+
+            let tray_icon = app
+                .default_window_icon()
+                .cloned()
+                .expect("default window icon must be set in tauri.conf.json");
+
+            TrayIconBuilder::new()
+                .icon(tray_icon)
+                .tooltip("ZenReply")
+                .menu(&menu)
+                .on_menu_event(|app, event| {
+                    let window = app.get_webview_window("main");
+                    match event.id().as_ref() {
+                        "show" => {
+                            if let Some(w) = window {
+                                let _ = w.show();
+                                let _ = w.unminimize();
+                                let _ = w.set_focus();
+                                let _ = w.emit(TRAY_WAKE_EVENT, ());
+                                set_tray_menu_enabled(app, false);
+                            }
+                        }
+                        "settings" => {
+                            if let Some(w) = window {
+                                let _ = w.show();
+                                let _ = w.unminimize();
+                                let _ = w.set_focus();
+                                let _ = w.emit(TRAY_OPEN_SETTINGS_EVENT, ());
+                                set_tray_menu_enabled(app, false);
+                            }
+                        }
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            // Skip if window is already visible.
+                            if window.is_visible().unwrap_or(false) {
+                                return;
+                            }
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                            let _ = window.emit(TRAY_WAKE_EVENT, ());
+                            set_tray_menu_enabled(app, false);
+                        }
+                    }
+                })
+                .build(app)?;
+
+            app.manage(TrayMenuItems {
+                show: show_item,
+                settings: settings_item,
+            });
+
+            // ── Global shortcut ──
             app.global_shortcut()
                 .on_shortcut(ACTIVATION_SHORTCUT, |app, _shortcut, event| {
                     if event.state == ShortcutState::Released {
@@ -217,6 +313,14 @@ pub fn run() {
                     }
                 })?;
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Intercept window close — hide to tray instead of exiting.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+                set_tray_menu_enabled(window.app_handle(), true);
+            }
         })
         .invoke_handler(tauri::generate_handler![hide_window, test_api_connection,])
         .run(tauri::generate_context!())

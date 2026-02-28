@@ -7,6 +7,6 @@ Owner: AI_Alpha / AI_Beta
 ## 当前任务
 | ID | Status | Scope | Owner |
 |---|---|---|---|
-| 0228_01 | In Progress | `src/components/layout/FlipCard.tsx`, `src/hooks/useAutoResizeWindow.ts`, `src/App.tsx`, `src-tauri/tauri.conf.json`, `src-tauri/src/lib.rs` | AI_Alpha |
-| 0228_02 | Research | `src-tauri/Cargo.toml`, `src-tauri/src/lib.rs`, `src-tauri/capabilities/default.json`, `src/hooks/useZenReplyFlow.ts` | AI_Beta |
+| 0228_01 | Done | `src/components/layout/FlipCard.tsx`, `src/hooks/useAutoResizeWindow.ts`, `src/App.tsx`, `src-tauri/tauri.conf.json`, `src-tauri/src/lib.rs` | AI_Alpha |
+| 0228_02 | In Progress | `src-tauri/Cargo.toml`, `src-tauri/src/lib.rs`, `src-tauri/capabilities/default.json`, `src/hooks/useZenReplyFlow.ts` | AI_Beta |
 | 0228_03 | Research | `src/components/layout/FlipCard.tsx`, `src/components/feedback/ZenToast.tsx`, `src/index.css` | AI_Gamma |

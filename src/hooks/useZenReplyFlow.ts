@@ -17,6 +17,8 @@ import { toErrorMessage } from "../shared/utils";
 
 const CLIPBOARD_EVENT = "zenreply://clipboard-text";
 const CLIPBOARD_CAPTURED_EVENT = "zenreply://clipboard-captured";
+const TRAY_WAKE_EVENT = "zenreply://tray-wake";
+const TRAY_OPEN_SETTINGS_EVENT = "zenreply://tray-open-settings";
 const MISSING_API_KEY_ERROR = "请先设置 API Key";
 const EMPTY_TEXT_ERROR = "原始文本不能为空";
 
@@ -287,6 +289,8 @@ export function useZenReplyFlow(settings: SettingsDeps) {
   useEffect(() => {
     let unlistenWake: (() => void) | null = null;
     let unlistenCapture: (() => void) | null = null;
+    let unlistenTrayWake: (() => void) | null = null;
+    let unlistenTraySettings: (() => void) | null = null;
     let active = true;
 
     // Primary wake event — window just became visible, reset UI
@@ -306,14 +310,33 @@ export function useZenReplyFlow(settings: SettingsDeps) {
       unlistenCapture = cleanup;
     });
 
+    // Tray icon: open main panel with empty text
+    void listen(TRAY_WAKE_EVENT, () => {
+      onWake("");
+    }).then((cleanup) => {
+      if (!active) { cleanup(); return; }
+      unlistenTrayWake = cleanup;
+    });
+
+    // Tray icon: open settings panel directly
+    void listen(TRAY_OPEN_SETTINGS_EVENT, () => {
+      onWake("");
+      settings.setIsSettingsOpen(true);
+    }).then((cleanup) => {
+      if (!active) { cleanup(); return; }
+      unlistenTraySettings = cleanup;
+    });
+
     return () => {
       active = false;
       unlistenWake?.();
       unlistenCapture?.();
+      unlistenTrayWake?.();
+      unlistenTraySettings?.();
       clearHideTimer();
       stopStream();
     };
-  }, [clearHideTimer, onWake, stopStream]);
+  }, [clearHideTimer, onWake, settings, stopStream]);
 
   // ── Sync stream errors to transient error display ──
   useEffect(() => {
