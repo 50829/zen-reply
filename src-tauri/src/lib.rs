@@ -9,6 +9,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_notification::NotificationExt;
 
 const ACTIVATION_SHORTCUT: &str = "Alt+Space";
 const CLIPBOARD_EVENT: &str = "zenreply://clipboard-text";
@@ -251,6 +252,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // ── System tray ──
             let show_item = MenuItemBuilder::with_id("show", "打开主面板").build(app)?;
@@ -327,6 +329,15 @@ pub fn run() {
                         on_shortcut_pressed(app);
                     }
                 })?;
+
+            // ── Startup notification ──
+            app.notification()
+                .builder()
+                .title("ZenReply 已启动")
+                .body("按 Alt+Space 唤醒")
+                .show()
+                .unwrap_or_else(|e| eprintln!("notification failed: {e}"));
+
             Ok(())
         })
         .on_window_event(|window, event| {
