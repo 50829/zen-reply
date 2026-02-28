@@ -270,7 +270,7 @@ pub fn run() {
 
             TrayIconBuilder::with_id("main-tray")
                 .icon(tray_icon)
-                .tooltip("ZenReply 已启动 — 按 Alt+Space 唤醒")
+                .tooltip("ZenReply - 按 Alt+Space 唤醒")
                 .menu(&menu)
                 .on_menu_event(|app, event| {
                     let window = app.get_webview_window("main");
@@ -329,16 +329,6 @@ pub fn run() {
                         on_shortcut_pressed(app);
                     }
                 })?;
-
-            // ── Reset tray tooltip after 10 s ──
-            let handle = app.handle().clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(10));
-                if let Some(tray) = handle.tray_by_id("main-tray") {
-                    let _ = tray.set_tooltip(Some("ZenReply"));
-                }
-            });
-
             Ok(())
         })
         .on_window_event(|window, event| {
