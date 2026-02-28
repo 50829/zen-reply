@@ -8,6 +8,15 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react(), tailwindcss()],
+  build: {
+    // Tauri embeds the frontend — aggressive minification is fine.
+    minify: "esbuild",
+    cssMinify: "esbuild",
+    target: "esnext",
+    rollupOptions: {
+      output: { manualChunks: undefined },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
