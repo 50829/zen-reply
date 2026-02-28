@@ -10,4 +10,4 @@ export const ROLE_OPTIONS: RoleOption[] = [
 ];
 
 export const CUSTOM_ROLE_HOTKEY = 4;
-export const CUSTOM_ROLE_DEFAULT_LABEL = "➕自定义";
+export const CUSTOM_ROLE_DEFAULT_LABEL = "4. ➕自定义";

@@ -36,6 +36,7 @@ type ZenReplyContextValue = {
   startCustomRoleEditing: () => void;
   cancelCustomRoleEditing: () => void;
   confirmCustomRole: () => void;
+  saveCustomRole: () => void;
   confirmAndCopy: () => Promise<void>;
   selectPresetRole: (role: PresetTargetRole) => void;
   selectRoleByHotkey: (hotkey: 1 | 2 | 3) => void;

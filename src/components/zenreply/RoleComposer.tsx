@@ -2,11 +2,11 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CUSTOM_ROLE_DEFAULT_LABEL,
-  CUSTOM_ROLE_HOTKEY,
   ROLE_OPTIONS,
 } from "../../shared/constants";
 
 import { useZenReplyContext } from "../../contexts/ZenReplyContext";
+import { ClearableField } from "../shared/ClearableField";
 import { FADE_TRANSITION } from "../../shared/motion";
 
 type RoleComposerProps = {
@@ -28,6 +28,7 @@ export function RoleComposer({ onGenerate }: RoleComposerProps) {
     setCustomRoleDraft,
     cancelCustomRoleEditing,
     confirmCustomRole,
+    saveCustomRole,
     setContextText,
   } = useZenReplyContext();
 
@@ -121,6 +122,13 @@ export function RoleComposer({ onGenerate }: RoleComposerProps) {
                     cancelCustomRoleEditing();
                   }
                 }}
+                onBlur={() => {
+                  if (!customRoleDraft.trim()) {
+                    cancelCustomRoleEditing();
+                  } else {
+                    saveCustomRole();
+                  }
+                }}
                 placeholder={PLACEHOLDER_TEXT}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -137,15 +145,17 @@ export function RoleComposer({ onGenerate }: RoleComposerProps) {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={FADE_TRANSITION}
-                className={`rounded-full border px-3 py-1.5 text-xs transition active:scale-[0.97] ${
-                  targetRole === "custom"
-                    ? "border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
-                    : "border-white/15 bg-white/5 text-zinc-200 hover:border-white/35"
+                className={`rounded-full border text-xs transition active:scale-[0.97] ${
+                  targetRole === "custom" && customRoleName
+                    ? "px-3 py-1.5 border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
+                    : targetRole === "custom"
+                      ? "px-2.5 py-1.5 border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
+                      : "px-2.5 py-1.5 border-white/15 bg-white/5 text-zinc-200 hover:border-white/35"
                 }`}
+                title="自定义对象身份"
               >
-                {CUSTOM_ROLE_HOTKEY}.{" "}
                 {targetRole === "custom" && customRoleName
-                  ? customRoleName
+                  ? `✦ ${customRoleName}`
                   : CUSTOM_ROLE_DEFAULT_LABEL}
               </motion.button>
             )}
@@ -161,11 +171,12 @@ export function RoleComposer({ onGenerate }: RoleComposerProps) {
           : roleMeta?.vibe}
       </p>
 
-      <input
+      <ClearableField
         value={contextText}
-        onChange={(e) => setContextText(e.currentTarget.value)}
+        onChange={setContextText}
         placeholder="对方说了什么？(可选)"
-        className="mt-3 w-full rounded-2xl border border-white/10 bg-white/3 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 focus:border-cyan-300/50"
+        accent="cyan"
+        className="mt-3"
       />
 
       <button

@@ -252,6 +252,16 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     });
   }, [customRoleDraft, settings, startGenerating]);
 
+  /** Save the custom role name without triggering generation (used by onBlur). */
+  const saveCustomRole = useCallback(() => {
+    const name = customRoleDraft.trim();
+    if (!name) return;
+    setCustomRoleName(name);
+    setTargetRole("custom");
+    setIsCustomRoleEditing(false);
+    setCustomRoleDraft(name);
+  }, [customRoleDraft]);
+
   const confirmAndCopy = useCallback(async () => {
     const output = streamedText.trim();
     if (!output || stage !== "FINISHED") {
@@ -385,6 +395,7 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     startCustomRoleEditing,
     cancelCustomRoleEditing,
     confirmCustomRole,
+    saveCustomRole,
     confirmAndCopy,
     selectPresetRole,
     selectRoleByHotkey,
