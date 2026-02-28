@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CUSTOM_ROLE_DEFAULT_LABEL,
@@ -44,6 +44,26 @@ export function RoleComposer({
   onGenerate,
 }: RoleComposerProps) {
   const customRoleInputRef = useRef<HTMLInputElement | null>(null);
+  const measurerRef = useRef<HTMLSpanElement | null>(null);
+  const [inputWidth, setInputWidth] = useState<number | undefined>(undefined);
+
+  const PLACEHOLDER_TEXT = "输入对方身份 (按 Enter 确认)";
+  // px-3 = 12px each side = 24px + 2px border + 4px buffer
+  const INPUT_PADDING = 30;
+
+  const measureWidth = useCallback(() => {
+    if (!measurerRef.current) return;
+    setInputWidth(measurerRef.current.offsetWidth + INPUT_PADDING);
+  }, []);
+
+  useEffect(() => {
+    if (isCustomRoleEditing) {
+      // Measure on next frame so the span has rendered with new content
+      requestAnimationFrame(measureWidth);
+    }
+    // customRoleDraft is intentionally included to trigger re-measurement on each keystroke
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCustomRoleEditing, customRoleDraft, measureWidth]);
 
   useEffect(() => {
     if (!isCustomRoleEditing) {
@@ -82,12 +102,29 @@ export function RoleComposer({
           );
         })}
 
-        <motion.div layout className="min-w-[170px] max-w-full">
+        {/* Hidden measurer span — mirrors input text style to calculate width */}
+        <span
+          ref={measurerRef}
+          aria-hidden
+          className="pointer-events-none invisible fixed left-0 top-0 whitespace-pre text-xs"
+        >
+          {isCustomRoleEditing
+            ? (customRoleDraft || PLACEHOLDER_TEXT)
+            : ""}
+        </span>
+
+        <div
+          className="max-w-full transition-[width] duration-150 ease-out"
+          style={
+            isCustomRoleEditing && inputWidth
+              ? { width: inputWidth }
+              : undefined
+          }
+        >
           <AnimatePresence initial={false} mode="wait">
             {isCustomRoleEditing ? (
               <motion.input
                 key="custom-role-input"
-                layout
                 ref={customRoleInputRef}
                 autoFocus
                 value={customRoleDraft}
@@ -106,23 +143,22 @@ export function RoleComposer({
                     onCancelCustomRoleEditing();
                   }
                 }}
-                placeholder="输入对方身份 (按 Enter 确认)"
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                transition={{ duration: 0.18 }}
+                placeholder={PLACEHOLDER_TEXT}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
                 className="w-full rounded-full border border-cyan-300/50 bg-cyan-300/15 px-3 py-1.5 text-xs text-cyan-100 outline-none placeholder:text-cyan-200/65"
               />
             ) : (
               <motion.button
                 key={`custom-role-button-${customRoleName || "empty"}`}
-                layout
                 type="button"
                 onClick={onStartCustomRoleEditing}
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                transition={{ duration: 0.18 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
                 className={`rounded-full border px-3 py-1.5 text-xs transition ${
                   targetRole === "custom"
                     ? "border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
@@ -136,7 +172,7 @@ export function RoleComposer({
               </motion.button>
             )}
           </AnimatePresence>
-        </motion.div>
+        </div>
       </div>
 
       <p className="mt-2 text-xs text-zinc-500">
