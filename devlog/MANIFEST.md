@@ -14,3 +14,5 @@ Owner: AI_Alpha / AI_Beta
 | 0228_05 | Done | `src/components/zenreply/RoleComposer.tsx` | AI_Epsilon |
 | 0228_06 | Done | `src/components/layout/FlipCard.tsx` | AI_Zeta || 0228_07 | Done | ALL src/ files, index.html, package.json, Cargo.toml, lib.rs, capabilities/default.json | AI_Omega |
 | 0228_08 | Done | `src/components/layout/FlipCard.tsx`, `src/hooks/useAutoResizeWindow.ts`, `src/index.css` | AI_Omega |
+| 0228_09 | Done | `src-tauri/src/lib.rs`, `src-tauri/capabilities/default.json`, `src/hooks/useAutoResizeWindow.ts`, `src/components/layout/FlipCard.tsx`, `src/index.css`, `src/shared/motion.ts` | AI_Omega |
+| 0228_10 | Done | `src/components/layout/FlipCard.tsx`, `src/components/shared/GlassCard.tsx`, `src/shared/tokens.ts` | AI_Omega |
