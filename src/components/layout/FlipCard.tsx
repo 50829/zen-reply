@@ -52,6 +52,7 @@ export function FlipCard({
 
   return (
     <div
+      data-tauri-drag-region
       className="relative flex min-h-full w-full items-center justify-center p-4"
       style={{ perspective: 1200 }}
     >
