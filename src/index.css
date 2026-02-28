@@ -8,7 +8,7 @@ body,
   margin: 0;
   padding: 0;
   background: transparent;
-  overflow: hidden;
+  overflow: clip;
 }
 
 * {
@@ -81,12 +81,4 @@ body {
   }
 }
 
-/* ── 3D Flip Card ── */
-.zen-flip-face {
-  -webkit-backface-visibility: hidden;
-  backface-visibility: hidden;
-}
 
-.zen-flip-face--animating {
-  will-change: transform, opacity;
-}

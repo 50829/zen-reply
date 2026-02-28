@@ -160,15 +160,10 @@ export function FlipCard({
   const animateScale = hasEverFlipped.current ? FLIP_SCALE : 1;
   const animateShadow = hasEverFlipped.current ? FLIP_SHADOW : FLIP_STATIC_SHADOW;
 
-  const flipFaceClass = isFlipAnimating
-    ? "zen-flip-face zen-flip-face--animating"
-    : "zen-flip-face";
-
   return (
     <div
       data-tauri-drag-region
-      className="relative flex min-h-full w-full items-center justify-center px-4 pt-4 pb-8"
-      style={{ perspective: 1200 }}
+      className="relative flex min-h-full w-full items-start justify-center px-4 pt-4 pb-12 perspective-distant"
     >
       <motion.section
         key={panelAnimateKey}
@@ -176,13 +171,12 @@ export function FlipCard({
         initial={{ opacity: 0, scale: 0.97 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={MOUNT_TRANSITION}
-        style={{ transformStyle: "preserve-3d" }}
-        className="w-142"
+        className="w-142 transform-3d"
       >
         {/* 3D Flip Container */}
         <motion.div
-          className="relative w-full rounded-3xl"
-          style={{ transformStyle: "preserve-3d", willChange: isFlipAnimating ? "transform" : "auto" }}
+          className="relative w-full rounded-3xl transform-3d"
+          style={{ willChange: isFlipAnimating ? "transform" : "auto" }}
           initial={false}
           animate={{
             rotateY: animateRotateY,
@@ -201,7 +195,7 @@ export function FlipCard({
           {/* Front face */}
           <div
             ref={frontRef}
-            className={`${flipFaceClass} absolute inset-x-0 top-0 w-full`}
+            className="backface-hidden absolute inset-x-0 top-0 w-full"
             style={{ pointerEvents: isFlipped ? "none" : "auto" }}
           >
             {front}
@@ -210,7 +204,7 @@ export function FlipCard({
           {/* Back face */}
           <div
             ref={backRef}
-            className={`${flipFaceClass} absolute inset-x-0 top-0 w-full`}
+            className="backface-hidden absolute inset-x-0 top-0 w-full"
             style={{
               transform: "rotateY(180deg)",
               pointerEvents: isFlipped ? "auto" : "none",

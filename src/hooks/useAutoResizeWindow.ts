@@ -51,10 +51,11 @@ export function useAutoResizeWindow(options: UseAutoResizeWindowOptions) {
           const w = getCurrentWindow();
           await w.setSize(new LogicalSize(width, nextHeight));
 
-          // Only show + focus on the first report (initial wake).
+          // Only center + show + focus on the first report (initial wake).
           // Subsequent resizes just update dimensions silently.
           if (!hasShownRef.current) {
             hasShownRef.current = true;
+            await w.center();
             await w.show();
             await w.setFocus();
           }
