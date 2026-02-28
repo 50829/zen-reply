@@ -6,7 +6,7 @@
 
 export const WINDOW_FIXED_WIDTH = 600;
 export const WINDOW_MAX_HEIGHT = 980;
-export const WINDOW_VERTICAL_PADDING = 40;
+export const WINDOW_VERTICAL_PADDING = 128; // pt-16 (64) + pb-16 (64)
 
 export const CARD_RADIUS_OUTER = 24;
 export const CARD_RADIUS_INNER = 21;

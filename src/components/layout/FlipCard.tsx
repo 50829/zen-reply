@@ -136,7 +136,7 @@ export function FlipCard({
   return (
     <div
       data-tauri-drag-region
-      className="relative flex min-h-full w-full items-start justify-center px-4 pt-4 pb-12 perspective-distant"
+      className="relative flex min-h-full w-full items-start justify-center px-4 pt-16 pb-16 perspective-distant"
     >
       <section
         key={panelAnimateKey}
