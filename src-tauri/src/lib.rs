@@ -95,6 +95,21 @@ fn hide_window(window: tauri::WebviewWindow) -> Result<(), String> {
     result
 }
 
+/// Single IPC call: resize + center + show + focus.
+/// Eliminates 4 sequential JS→Rust round-trips on every wake.
+#[tauri::command]
+fn show_window(window: tauri::WebviewWindow, width: f64, height: f64) -> Result<(), String> {
+    use tauri::LogicalSize;
+    window
+        .set_size(LogicalSize::new(width, height))
+        .map_err(|e| e.to_string())?;
+    window.center().map_err(|e| e.to_string())?;
+    window.show().map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())?;
+    update_tray_menu(window.app_handle(), true);
+    Ok(())
+}
+
 #[tauri::command]
 async fn test_api_connection(
     api_key: String,
@@ -237,12 +252,6 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
-            // Set transparent background for the webview to prevent the default
-            // white flash that appears for 1-2 frames when the window is shown.
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
-            }
-
             // ── System tray ──
             let show_item = MenuItemBuilder::with_id("show", "打开主面板").build(app)?;
             let settings_item = MenuItemBuilder::with_id("settings", "打开设置").build(app)?;
@@ -328,7 +337,7 @@ pub fn run() {
                 update_tray_menu(window.app_handle(), false);
             }
         })
-        .invoke_handler(tauri::generate_handler![hide_window, test_api_connection,])
+        .invoke_handler(tauri::generate_handler![hide_window, show_window, test_api_connection,])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

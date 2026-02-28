@@ -26,7 +26,6 @@ import {
   FLIP_SCALE_TRANSITION,
   FLIP_SHADOW_TRANSITION,
   HALO_TRANSITION,
-  MOUNT_TRANSITION,
 } from "../../shared/motion";
 
 type FlipCardProps = {
@@ -150,13 +149,10 @@ export function FlipCard({
       data-tauri-drag-region
       className="relative flex min-h-full w-full items-start justify-center px-4 pt-4 pb-12 perspective-distant"
     >
-      <motion.section
+      <section
         key={panelAnimateKey}
         ref={panelRef}
-        initial={{ opacity: 0, scale: 0.97 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={MOUNT_TRANSITION}
-        className="w-142 transform-3d"
+        className="zen-panel-enter w-142 transform-3d"
       >
         {/* 3D Flip Container */}
         <motion.div
@@ -217,7 +213,7 @@ export function FlipCard({
             </motion.div>
           )}
         </motion.div>
-      </motion.section>
+      </section>
     </div>
   );
 }

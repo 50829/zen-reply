@@ -4,18 +4,7 @@
 
 import { FLIP_DURATION, FLIP_TIMES } from "./tokens";
 
-// ── Easing curves ────────────────────────────────────────────────────
-
-/** Smooth ease-out used for panel mount & height transitions. */
-export const EASE_SMOOTH = [0.22, 1, 0.36, 1] as const;
-
 // ── Transition presets ───────────────────────────────────────────────
-
-/** Panel first-mount fade + scale. */
-export const MOUNT_TRANSITION = {
-  duration: 0.2,
-  ease: EASE_SMOOTH,
-} as const;
 
 /** Section expand/collapse (controls, result card). */
 export const SECTION_TRANSITION = {
