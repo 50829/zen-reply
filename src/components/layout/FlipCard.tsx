@@ -11,8 +11,6 @@ import { useAutoResizeWindow } from "../../hooks/useAutoResizeWindow";
 import {
   BACKWARD_ROTATE,
   FLIP_SCALE,
-  FLIP_SHADOW,
-  FLIP_STATIC_SHADOW,
   FLIP_WINDOW_EXTRA,
   FORWARD_ROTATE,
   HALO_OPACITY_TIMES,
@@ -24,7 +22,6 @@ import {
 import {
   FLIP_ROTATE_TRANSITION,
   FLIP_SCALE_TRANSITION,
-  FLIP_SHADOW_TRANSITION,
   HALO_TRANSITION,
 } from "../../shared/motion";
 
@@ -124,25 +121,17 @@ export function FlipCard({
   // ── Flip complete: settle height ───────────────────────────────────
 
   const handleFlipComplete = useCallback(() => {
-    requestAnimationFrame(() => {
-      const exactH = isFlipped
-        ? (backRef.current?.offsetHeight ?? 0)
-        : (frontRef.current?.offsetHeight ?? 0);
-      if (exactH > 0) {
-        setTargetHeight(exactH);
-        reportContentHeight(exactH);
-      }
-      isFlipAnimatingRef.current = false;
-      setIsFlipAnimating(false);
-    });
-  }, [isFlipped, reportContentHeight]);
+    // Clear flip state — the ResizeObserver useLayoutEffect will
+    // re-measure the natural height synchronously before paint.
+    isFlipAnimatingRef.current = false;
+    setIsFlipAnimating(false);
+  }, []);
 
   // ── Animation values ───────────────────────────────────────────────
 
   const rotateKeyframes = isFlipped ? FORWARD_ROTATE : BACKWARD_ROTATE;
   const animateRotateY = hasEverFlipped.current ? rotateKeyframes : (isFlipped ? 180 : 0);
   const animateScale = hasEverFlipped.current ? FLIP_SCALE : 1;
-  const animateShadow = hasEverFlipped.current ? FLIP_SHADOW : FLIP_STATIC_SHADOW;
 
   return (
     <div
@@ -165,12 +154,12 @@ export function FlipCard({
           animate={{
             rotateY: animateRotateY,
             scale: animateScale,
-            boxShadow: animateShadow,
+            //boxShadow: animateShadow,
           }}
           transition={{
             rotateY: FLIP_ROTATE_TRANSITION,
             scale: FLIP_SCALE_TRANSITION,
-            boxShadow: FLIP_SHADOW_TRANSITION,
+            //boxShadow: FLIP_SHADOW_TRANSITION,
           }}
           onAnimationComplete={handleFlipComplete}
         >
@@ -178,7 +167,10 @@ export function FlipCard({
           <div
             ref={frontRef}
             className="backface-hidden absolute inset-x-0 top-0 w-full"
-            style={{ pointerEvents: isFlipped ? "none" : "auto" }}
+            style={{
+              pointerEvents: isFlipped ? "none" : "auto",
+              ...(isFlipAnimating ? { height: targetHeight } : {}),
+            }}
           >
             {front}
           </div>
@@ -190,6 +182,7 @@ export function FlipCard({
             style={{
               transform: "rotateY(180deg)",
               pointerEvents: isFlipped ? "auto" : "none",
+              ...(isFlipAnimating ? { height: targetHeight } : {}),
             }}
           >
             {back}

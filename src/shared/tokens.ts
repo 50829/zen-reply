@@ -57,7 +57,7 @@ export const FLIP_SHADOW = [
 export const FLIP_STATIC_SHADOW = "0 4px 12px rgba(0,0,0,0.18)";
 
 /** Extra px added during flip so 3D rotation isn't clipped. */
-export const FLIP_WINDOW_EXTRA = 32;
+export const FLIP_WINDOW_EXTRA = 64;
 
 // ── Halo Sweep ───────────────────────────────────────────────────────
 

@@ -48,11 +48,11 @@ export function GlassCard({ accent = "cyan", children }: GlassCardProps) {
     <div
       role="application"
       onMouseDown={onDragMouseDown as unknown as (e: MouseEvent) => void}
-      className={`rounded-3xl border p-0.5 ${OUTER_BORDER[accent]} ${OUTER_BG[accent]}`}
+      className={`flex h-full flex-col rounded-3xl border p-0.5 ${OUTER_BORDER[accent]} ${OUTER_BG[accent]}`}
       style={{ boxShadow: OUTER_GLOW[accent] }}
     >
       <main
-        className="relative flex w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-[#0d1117]/90 p-5 text-zinc-100 backdrop-blur-2xl"
+        className="relative flex grow w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-[#0d1117]/90 p-5 text-zinc-100 backdrop-blur-2xl"
         style={{ boxShadow: INNER_SHADOW[accent] }}
       >
         {children}
