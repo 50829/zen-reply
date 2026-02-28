@@ -1,4 +1,4 @@
-import { type ReactNode, type RefObject, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 
 type FlipCardProps = {
@@ -9,10 +9,58 @@ type FlipCardProps = {
   panelAnimateKey: number;
   panelWidthClass: string;
   minHeight: number;
-  /** Reports the measured content height (max of front/back faces) so the
-   *  window can be resized to exactly fit the content, independent of any
-   *  intermediate animation height applied by Framer Motion. */
+  /** Reports the measured content height so the window can be resized to
+   *  exactly fit the content. */
   onContentHeightChange?: (height: number) => void;
+};
+
+/* ── Flip keyframes (forward: 0°→180°, backward: 180°→0°) ──────────── */
+
+const FLIP_DURATION = 0.72; // seconds
+const FLIP_TIMES = [0, 0.11, 0.39, 0.44, 0.72, 0.80, 0.90, 1.0];
+
+const FORWARD_ROTATE = [0, -3, 90, 90, 180, 183, 179, 180];
+const BACKWARD_ROTATE = [180, 183, 90, 90, 0, -3, 2, 0];
+
+const FLIP_SCALE = [1, 1, 0.97, 0.97, 1, 1.008, 0.998, 1];
+
+const FLIP_SHADOW = [
+  "0 20px 70px rgba(0,0,0,0.30)",
+  "0 25px 90px rgba(0,0,0,0.45)",
+  "0 35px 120px rgba(0,0,0,0.60)",
+  "0 35px 120px rgba(0,0,0,0.60)",
+  "0 20px 70px rgba(0,0,0,0.30)",
+  "0 18px 65px rgba(0,0,0,0.28)",
+  "0 21px 72px rgba(0,0,0,0.32)",
+  "0 20px 70px rgba(0,0,0,0.30)",
+];
+
+const FLIP_ROTATE_TRANSITION = {
+  duration: FLIP_DURATION,
+  times: FLIP_TIMES,
+  ease: [
+    [0.32, 0, 0.67, 0] as const,   // Phase 1: ease-in  (蓄力)
+    [0.25, 0.1, 0.25, 1] as const, // Phase 2: ease-out (加速翻转)
+    [0.5, 0, 0.5, 1] as const,     // Phase 3: linear   (暂停)
+    [0.25, 0.1, 0.25, 1] as const, // Phase 4: ease-out (完成翻转)
+    [0.33, 1, 0.68, 1] as const,   // Phase 5a: ease-out(余震)
+    [0.33, 1, 0.68, 1] as const,   // Phase 5b
+    [0.33, 1, 0.68, 1] as const,   // Phase 5c: settle
+  ],
+};
+
+const HALO_OPACITY_TIMES = [0, 0.30, 0.44, 0.70, 1.0];
+const HALO_OPACITY_VALUES = [0, 0.15, 0.25, 0.10, 0];
+
+/* ── Height settle duration ────────────────────────────────────────── */
+const HEIGHT_SETTLE_DELAY_MS = 50;
+/** Smooth height transition used for BOTH pre-expand and post-contract.
+ *  ~400ms ease-out blends naturally with the 720ms flip. The pre-expand
+ *  reaches max around the time the card hits 90°, and the post-contract
+ *  starts after the aftershock settles. No more `duration:0` hard jumps. */
+const HEIGHT_TRANSITION = {
+  duration: 0.4,
+  ease: [0.22, 1, 0.36, 1] as const,
 };
 
 export function FlipCard({
@@ -27,18 +75,46 @@ export function FlipCard({
 }: FlipCardProps) {
   const frontRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLDivElement>(null);
-  const [flipHeight, setFlipHeight] = useState(minHeight);
 
-  // Measure both faces and use max height for stable 3D flip transition.
-  // useLayoutEffect ensures the first measurement runs before the browser paints,
-  // preventing a single-frame flash at the stale minHeight value.
+  // ── Height management: "Flip → Settle → Resize" strategy ──────────
+
+  const [targetHeight, setTargetHeight] = useState(minHeight);
+  const [isFlipAnimating, setIsFlipAnimating] = useState(false);
+  const prevFlippedRef = useRef(isFlipped);
+  /** Tracks whether a flip has been triggered at least once, so the halo
+   *  animation does not fire on initial mount. */
+  const flipCountRef = useRef(0);
+  const [flipTrigger, setFlipTrigger] = useState(0);
+
+  // On flip trigger: lock height to max and start animating
   useLayoutEffect(() => {
-    const measure = () => {
+    if (isFlipped !== prevFlippedRef.current) {
+      prevFlippedRef.current = isFlipped;
+      flipCountRef.current += 1;
+      setIsFlipAnimating(true);
+      setFlipTrigger((n) => n + 1);
+
+      // Phase A: immediately lock to max height
       const fh = frontRef.current?.offsetHeight ?? 0;
       const bh = backRef.current?.offsetHeight ?? 0;
-      const h = Math.max(fh, bh);
+      const maxH = Math.max(fh, bh);
+      if (maxH > 0) {
+        setTargetHeight(maxH);
+        onContentHeightChange?.(maxH);
+      }
+    }
+  }, [isFlipped, onContentHeightChange]);
+
+  // Also observe face resizes when NOT flip-animating (e.g. content changes)
+  useLayoutEffect(() => {
+    if (isFlipAnimating) return;
+
+    const measure = () => {
+      const h = isFlipped
+        ? (backRef.current?.offsetHeight ?? 0)
+        : (frontRef.current?.offsetHeight ?? 0);
       if (h > 0) {
-        setFlipHeight(h);
+        setTargetHeight(h);
         onContentHeightChange?.(h);
       }
     };
@@ -48,7 +124,30 @@ export function FlipCard({
     if (frontRef.current) observer.observe(frontRef.current);
     if (backRef.current) observer.observe(backRef.current);
     return () => observer.disconnect();
+  }, [isFlipped, isFlipAnimating, onContentHeightChange]);
+
+  // Phase C: after flip animation completes, settle to exact target height
+  const handleFlipComplete = useCallback(() => {
+    // Small delay before settling, so the "aftershock" feels finished
+    const timer = window.setTimeout(() => {
+      setIsFlipAnimating(false);
+
+      requestAnimationFrame(() => {
+        const exactH = isFlipped
+          ? (backRef.current?.offsetHeight ?? 0)
+          : (frontRef.current?.offsetHeight ?? 0);
+        if (exactH > 0) {
+          setTargetHeight(exactH);
+          onContentHeightChange?.(exactH);
+        }
+      });
+    }, HEIGHT_SETTLE_DELAY_MS);
+    return () => window.clearTimeout(timer);
   }, [isFlipped, onContentHeightChange]);
+
+  // ── Build animation values ────────────────────────────────────────
+
+  const rotateKeyframes = isFlipped ? FORWARD_ROTATE : BACKWARD_ROTATE;
 
   return (
     <div
@@ -65,20 +164,27 @@ export function FlipCard({
         style={{ transformStyle: "preserve-3d" }}
         className={`transition-[max-width,width] duration-300 ${panelWidthClass}`}
       >
+        {/* ── 3D Flip Container ── */}
         <motion.div
-          className="relative w-full"
-          style={{ transformStyle: "preserve-3d" }}
+          className="relative w-full rounded-3xl"
+          style={{ transformStyle: "preserve-3d", willChange: "transform" }}
           initial={false}
           animate={{
-            rotateY: isFlipped ? 180 : 0,
-            height: flipHeight,
+            rotateY: rotateKeyframes,
+            scale: FLIP_SCALE,
+            boxShadow: FLIP_SHADOW,
+            height: targetHeight,
           }}
           transition={{
-            rotateY: { type: "spring", stiffness: 70, damping: 16 },
-            height: { type: "spring", stiffness: 170, damping: 24 },
+            rotateY: FLIP_ROTATE_TRANSITION,
+            scale: { duration: FLIP_DURATION, times: FLIP_TIMES, ease: "easeInOut" },
+            boxShadow: { duration: FLIP_DURATION, times: FLIP_TIMES, ease: "easeInOut" },
+            height: HEIGHT_TRANSITION, // always smooth — no hard jumps
           }}
+          onAnimationComplete={handleFlipComplete}
         >
-          {/* Front face */}
+          {/* Front face — backface-visibility:hidden handles visibility during 3D rotation,
+               no opacity crossfade needed (avoids the "both faces invisible" white flash) */}
           <div
             ref={frontRef}
             className="zen-flip-face absolute inset-x-0 top-0 w-full"
@@ -98,6 +204,24 @@ export function FlipCard({
           >
             {back}
           </div>
+
+          {/* ── Halo Sweep ── */}
+          {flipCountRef.current > 0 && (
+            <motion.div
+              key={`halo-${flipTrigger}`}
+              className="pointer-events-none absolute inset-0 z-10 overflow-hidden rounded-3xl"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: HALO_OPACITY_VALUES }}
+              transition={{ duration: FLIP_DURATION, times: HALO_OPACITY_TIMES, ease: "easeInOut" }}
+            >
+              <motion.div
+                className="absolute inset-y-0 w-[120%] bg-linear-to-r from-transparent via-cyan-300/10 to-transparent"
+                initial={{ x: "-120%" }}
+                animate={{ x: "120%" }}
+                transition={{ duration: FLIP_DURATION, ease: "easeInOut" }}
+              />
+            </motion.div>
+          )}
         </motion.div>
       </motion.section>
     </div>

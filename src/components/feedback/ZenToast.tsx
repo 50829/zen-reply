@@ -45,15 +45,15 @@ export function ZenToast({ toast }: ZenToastProps) {
       {toast ? (
         <motion.div
           key={`zen-toast-${toast.variant}-${toast.message}`}
-          initial={{ y: 10, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ scale: 0.95, opacity: 0 }}
+          initial={{ y: 10, opacity: 0, scale: 0.92 }}
+          animate={{ y: 0, opacity: 1, scale: 1 }}
+          exit={{ y: -8, opacity: 0, scale: 0.95 }}
           transition={{
-            y: { type: "spring", stiffness: 300 },
-            opacity: { duration: 0.2 },
-            scale: { duration: 0.2 },
+            y: { type: "spring", stiffness: 380, damping: 24 },
+            opacity: { duration: 0.18 },
+            scale: { type: "spring", stiffness: 400, damping: 22 },
           }}
-          className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center"
+          className="pointer-events-none fixed inset-0 z-9999 flex items-center justify-center"
         >
           <ToastContent toast={toast} />
         </motion.div>
