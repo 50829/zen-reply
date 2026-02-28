@@ -196,23 +196,25 @@ fn on_shortcut_pressed<R: tauri::Runtime>(app: &tauri::AppHandle<R>)
 where
     R: 'static,
 {
-    // Capture BEFORE showing the window — enigo Ctrl+C needs the source app focused.
-    let (text, previous) = quick_capture(app);
-
-    if let Some(window) = app.get_webview_window("main") {
-        // Do NOT show/focus here — let JS side show the window AFTER
-        // it has measured + resized the content, preventing the
-        // transparent-shell flash and first-launch blank panel.
-        let _ = window.emit(CLIPBOARD_EVENT, ClipboardPayload { text: text.clone() });
-    }
-
-    // Panel is now visible — show minimal tray menu.
+    // Panel is now being activated — show minimal tray menu immediately.
     update_tray_menu(app, true);
 
-    // Async fallback: only when the fast path returned nothing.
-    if text.is_empty() {
-        let handle = app.clone();
-        std::thread::spawn(move || {
+    // Move the blocking clipboard capture off the main thread to prevent
+    // the 80ms+ block on Tauri's event loop (thread::sleep in quick_capture).
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        // Capture BEFORE showing the window — enigo Ctrl+C needs the source app focused.
+        let (text, previous) = quick_capture(&handle);
+
+        if let Some(window) = handle.get_webview_window("main") {
+            // Do NOT show/focus here — let JS side show the window AFTER
+            // it has measured + resized the content, preventing the
+            // transparent-shell flash and first-launch blank panel.
+            let _ = window.emit(CLIPBOARD_EVENT, ClipboardPayload { text: text.clone() });
+        }
+
+        // Async fallback: only when the fast path returned nothing.
+        if text.is_empty() {
             let captured = fallback_capture(&handle, &previous);
             if !captured.is_empty() {
                 if let Some(window) = handle.get_webview_window("main") {
@@ -222,8 +224,8 @@ where
                     );
                 }
             }
-        });
-    }
+        }
+    });
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -231,7 +233,6 @@ pub fn run() {
     let _ = dotenvy::dotenv();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

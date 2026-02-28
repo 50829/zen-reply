@@ -17,7 +17,7 @@ body,
 
 body {
   font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  color: #f2f5f9;
+  color: #f4f4f5; /* zinc-100 */
 }
 
 /* Drag-region 禁用文本选中，交互元素恢复 */
@@ -85,5 +85,8 @@ body {
 .zen-flip-face {
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
+}
+
+.zen-flip-face--animating {
   will-change: transform, opacity;
 }

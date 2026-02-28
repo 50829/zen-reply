@@ -5,11 +5,11 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { hasApiKey, type AppSettings } from "../features/settings/store";
 import { buildPrompt } from "../features/zenreply/prompt";
-import {
-  ROLE_OPTIONS,
-  type PresetTargetRole,
-  type Stage,
-  type TargetRole,
+import { ROLE_OPTIONS } from "../shared/constants";
+import type {
+  PresetTargetRole,
+  Stage,
+  TargetRole,
 } from "../features/zenreply/types";
 import { useLlmStream, type LlmApiConfig } from "./useLlmStream";
 import type { ToastVariant } from "./useToast";
@@ -27,7 +27,7 @@ type ClipboardPayload = {
 };
 
 /** Cross-concern callbacks exposed by useSettings that the flow needs. */
-export type SettingsDeps = {
+type SettingsDeps = {
   syncSettingsFromStore: () => Promise<AppSettings | null>;
   setIsSettingsOpen: React.Dispatch<React.SetStateAction<boolean>>;
   showToast: (message: string, variant: ToastVariant, durationMs?: number) => void;
@@ -247,7 +247,9 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     setTargetRole("custom");
     setIsCustomRoleEditing(false);
     setCustomRoleDraft(confirmedRole);
-    void startGenerating(confirmedRole);
+    startGenerating(confirmedRole).catch(() => {
+      // Error already handled inside startGenerating via showError.
+    });
   }, [customRoleDraft, settings, startGenerating]);
 
   const confirmAndCopy = useCallback(async () => {
@@ -293,39 +295,48 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     let unlistenTraySettings: (() => void) | null = null;
     let active = true;
 
-    // Primary wake event — window just became visible, reset UI
-    void listen<ClipboardPayload>(CLIPBOARD_EVENT, (event) => {
-      onWake(event.payload.text || "");
-    }).then((cleanup) => {
-      if (!active) { cleanup(); return; }
-      unlistenWake = cleanup;
-    });
+    const setupListeners = async () => {
+      try {
+        const [wakeCleanup, captureCleanup, trayWakeCleanup, traySettingsCleanup] =
+          await Promise.all([
+            // Primary wake event — window just became visible, reset UI
+            listen<ClipboardPayload>(CLIPBOARD_EVENT, (event) => {
+              onWake(event.payload.text || "");
+            }),
+            // Async clipboard delivery — arrives after background capture completes
+            listen<ClipboardPayload>(CLIPBOARD_CAPTURED_EVENT, (event) => {
+              const text = (event.payload.text || "").trim();
+              if (text) setRawText(text);
+            }),
+            // Tray icon: open main panel with empty text
+            listen(TRAY_WAKE_EVENT, () => {
+              onWake("");
+            }),
+            // Tray icon: open settings panel directly
+            listen(TRAY_OPEN_SETTINGS_EVENT, () => {
+              onWake("");
+              settings.setIsSettingsOpen(true);
+            }),
+          ]);
 
-    // Async clipboard delivery — arrives after background capture completes
-    void listen<ClipboardPayload>(CLIPBOARD_CAPTURED_EVENT, (event) => {
-      const text = (event.payload.text || "").trim();
-      if (text) setRawText(text);
-    }).then((cleanup) => {
-      if (!active) { cleanup(); return; }
-      unlistenCapture = cleanup;
-    });
+        if (!active) {
+          wakeCleanup();
+          captureCleanup();
+          trayWakeCleanup();
+          traySettingsCleanup();
+          return;
+        }
 
-    // Tray icon: open main panel with empty text
-    void listen(TRAY_WAKE_EVENT, () => {
-      onWake("");
-    }).then((cleanup) => {
-      if (!active) { cleanup(); return; }
-      unlistenTrayWake = cleanup;
-    });
+        unlistenWake = wakeCleanup;
+        unlistenCapture = captureCleanup;
+        unlistenTrayWake = trayWakeCleanup;
+        unlistenTraySettings = traySettingsCleanup;
+      } catch (err) {
+        console.warn("[useZenReplyFlow] Failed to register event listeners:", err);
+      }
+    };
 
-    // Tray icon: open settings panel directly
-    void listen(TRAY_OPEN_SETTINGS_EVENT, () => {
-      onWake("");
-      settings.setIsSettingsOpen(true);
-    }).then((cleanup) => {
-      if (!active) { cleanup(); return; }
-      unlistenTraySettings = cleanup;
-    });
+    void setupListeners();
 
     return () => {
       active = false;

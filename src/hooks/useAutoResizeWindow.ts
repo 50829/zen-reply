@@ -8,15 +8,20 @@ type UseAutoResizeWindowOptions = {
   verticalPadding: number;
 };
 
+/** Debounce interval — prevents high-frequency IPC from ResizeObserver. */
+const RESIZE_DEBOUNCE_MS = 16;
+
 /**
  * Manages the Tauri window size so it tracks the panel content height.
  *
  * Exposes `reportContentHeight(h)` — called by FlipCard whenever the real
- * content height changes.  After resizing, the hook shows the window
- * (and focuses it) so the user never sees a stale/empty transparent frame.
+ * content height changes. The hook debounces rapid-fire calls and only
+ * calls show()/setFocus() once (on first report), not on every resize.
  */
 export function useAutoResizeWindow(options: UseAutoResizeWindowOptions) {
   const lastAppliedHeightRef = useRef(0);
+  const hasShownRef = useRef(false);
+  const debounceTimerRef = useRef<number>(0);
 
   // Keep latest options in a ref so the callback identity never changes.
   const optsRef = useRef(options);
@@ -34,23 +39,37 @@ export function useAutoResizeWindow(options: UseAutoResizeWindowOptions) {
     );
 
     const sizeChanged = nextHeight !== lastAppliedHeightRef.current;
+    if (!sizeChanged && hasShownRef.current) return;
+
     lastAppliedHeightRef.current = nextHeight;
 
-    void (async () => {
-      try {
-        const w = getCurrentWindow();
-        if (sizeChanged) {
+    // Debounce rapid-fire ResizeObserver calls.
+    window.clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const w = getCurrentWindow();
           await w.setSize(new LogicalSize(width, nextHeight));
+
+          // Only show + focus on the first report (initial wake).
+          // Subsequent resizes just update dimensions silently.
+          if (!hasShownRef.current) {
+            hasShownRef.current = true;
+            await w.show();
+            await w.setFocus();
+          }
+        } catch (err) {
+          console.warn("[useAutoResizeWindow] resize failed:", err);
         }
-        // Always ensure the window is visible & focused after sizing.
-        // show() and setFocus() are no-ops if already shown/focused.
-        await w.show();
-        await w.setFocus();
-      } catch {
-        // Permission errors or IPC failures — best-effort.
-      }
-    })();
+      })();
+    }, hasShownRef.current ? RESIZE_DEBOUNCE_MS : 0);
   }, []);
 
-  return { reportContentHeight };
+  /** Reset visibility tracking — call when the window is hidden. */
+  const resetVisibility = useCallback(() => {
+    hasShownRef.current = false;
+    lastAppliedHeightRef.current = 0;
+  }, []);
+
+  return { reportContentHeight, resetVisibility };
 }

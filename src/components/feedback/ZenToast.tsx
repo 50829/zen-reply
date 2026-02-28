@@ -1,10 +1,8 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, CheckCircle2, Info } from "lucide-react";
+import { useToastContext } from "../../contexts/ToastContext";
 import type { ToastState, ToastVariant } from "../../hooks/useToast";
-
-type ZenToastProps = {
-  toast: ToastState | null;
-};
+import { SPRING_TOAST } from "../../shared/motion";
 
 const VARIANT_STYLES: Record<
   ToastVariant,
@@ -39,7 +37,9 @@ const ICONS: Record<ToastVariant, typeof AlertCircle> = {
   info: Info,
 };
 
-export function ZenToast({ toast }: ZenToastProps) {
+export function ZenToast() {
+  const { toast } = useToastContext();
+
   return (
     <AnimatePresence>
       {toast ? (
@@ -48,11 +48,7 @@ export function ZenToast({ toast }: ZenToastProps) {
           initial={{ y: 10, opacity: 0, scale: 0.92 }}
           animate={{ y: 0, opacity: 1, scale: 1 }}
           exit={{ y: -8, opacity: 0, scale: 0.95 }}
-          transition={{
-            y: { type: "spring", stiffness: 380, damping: 24 },
-            opacity: { duration: 0.18 },
-            scale: { type: "spring", stiffness: 400, damping: 22 },
-          }}
+          transition={SPRING_TOAST}
           className="pointer-events-none fixed inset-0 z-9999 flex items-center justify-center"
         >
           <ToastContent toast={toast} />
