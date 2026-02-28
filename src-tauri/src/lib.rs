@@ -9,7 +9,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
-use tauri_plugin_notification::NotificationExt;
+
 
 const ACTIVATION_SHORTCUT: &str = "Alt+Space";
 const CLIPBOARD_EVENT: &str = "zenreply://clipboard-text";
@@ -252,7 +252,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .plugin(tauri_plugin_notification::init())
+
         .setup(|app| {
             // ── System tray ──
             let show_item = MenuItemBuilder::with_id("show", "打开主面板").build(app)?;
@@ -270,7 +270,7 @@ pub fn run() {
 
             TrayIconBuilder::with_id("main-tray")
                 .icon(tray_icon)
-                .tooltip("ZenReply")
+                .tooltip("ZenReply 已启动 — 按 Alt+Space 唤醒")
                 .menu(&menu)
                 .on_menu_event(|app, event| {
                     let window = app.get_webview_window("main");
@@ -330,13 +330,14 @@ pub fn run() {
                     }
                 })?;
 
-            // ── Startup notification ──
-            app.notification()
-                .builder()
-                .title("ZenReply 已启动")
-                .body("按 Alt+Space 唤醒")
-                .show()
-                .unwrap_or_else(|e| eprintln!("notification failed: {e}"));
+            // ── Reset tray tooltip after 10 s ──
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                if let Some(tray) = handle.tray_by_id("main-tray") {
+                    let _ = tray.set_tooltip(Some("ZenReply"));
+                }
+            });
 
             Ok(())
         })

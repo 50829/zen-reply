@@ -18,7 +18,6 @@
     "core:window:allow-start-dragging",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-write-text",
-    "store:default",
-    "notification:default"
+    "store:default"
   ]
 }
