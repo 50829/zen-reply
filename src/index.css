@@ -20,6 +20,18 @@ body {
   color: #f2f5f9;
 }
 
+/* Drag-region 禁用文本选中，交互元素恢复 */
+[data-tauri-drag-region] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+[data-tauri-drag-region] input,
+[data-tauri-drag-region] textarea,
+[data-tauri-drag-region] [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .zen-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.65) rgba(0, 0, 0, 0.12);
@@ -73,4 +85,5 @@ body {
 .zen-flip-face {
   -webkit-backface-visibility: hidden;
   backface-visibility: hidden;
+  will-change: transform, opacity;
 }

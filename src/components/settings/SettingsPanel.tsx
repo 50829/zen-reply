@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import type { AppSettings } from "../../features/settings/store";
+import { useDragWindow } from "../../hooks/useDragWindow";
 
 type SettingsPanelProps = {
   settingsDraft: AppSettings;
@@ -18,8 +19,10 @@ export function SettingsPanel({
   onSave,
   onTestApi,
 }: SettingsPanelProps) {
+  const onDragMouseDown = useDragWindow();
+
   return (
-    <div className="rounded-[24px] border border-violet-300/20 bg-violet-500/[0.04] p-[2px] shadow-[0_20px_70px_rgba(139,92,246,0.08)]">
+    <div role="application" onMouseDown={onDragMouseDown} className="rounded-[24px] border border-violet-300/20 bg-violet-500/[0.04] p-[2px] shadow-[0_20px_70px_rgba(139,92,246,0.08)]">
       <main className="relative flex w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-[#0d1117]/90 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-1px_0_rgba(255,255,255,0.04),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(139,92,246,0.10)]">
         {/* Header */}
         <header className="mb-4 flex shrink-0 items-center justify-between">
