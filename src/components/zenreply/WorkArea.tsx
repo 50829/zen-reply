@@ -61,8 +61,8 @@ export function WorkArea({
   const onDragMouseDown = useDragWindow();
 
   return (
-    <div role="application" onMouseDown={onDragMouseDown} className="rounded-[24px] border border-white/30 bg-white/[0.08] p-[2px] shadow-[0_20px_70px_rgba(255,255,255,0.12)]">
-      <main className="relative flex w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-[#0d1117]/90 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-1px_0_rgba(255,255,255,0.04),0_20px_80px_rgba(0,0,0,0.78),0_0_32px_rgba(34,211,238,0.15)]">
+    <div role="application" onMouseDown={onDragMouseDown} className="rounded-[24px] border border-white/30 bg-white/[0.08] p-[2px] shadow-[0_1px_6px_rgba(255,255,255,0.04)]">
+      <main className="relative flex w-full flex-col overflow-hidden rounded-[21px] border border-white/10 bg-[#0d1117]/90 p-5 text-zinc-100 backdrop-blur-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.10),inset_0_-1px_0_rgba(255,255,255,0.04),0_3px_11px_rgba(0,0,0,0.45),0_0_6px_rgba(34,211,238,0.06)]">
         <header className="mb-4 flex shrink-0 items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold tracking-tight">ZenReply</h1>

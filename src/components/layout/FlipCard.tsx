@@ -25,14 +25,14 @@ const BACKWARD_ROTATE = [180, 183, 90, 90, 0, -3, 2, 0];
 const FLIP_SCALE = [1, 1, 0.97, 0.97, 1, 1.008, 0.998, 1];
 
 const FLIP_SHADOW = [
-  "0 20px 70px rgba(0,0,0,0.30)",
-  "0 25px 90px rgba(0,0,0,0.45)",
-  "0 35px 120px rgba(0,0,0,0.60)",
-  "0 35px 120px rgba(0,0,0,0.60)",
-  "0 20px 70px rgba(0,0,0,0.30)",
-  "0 18px 65px rgba(0,0,0,0.28)",
-  "0 21px 72px rgba(0,0,0,0.32)",
-  "0 20px 70px rgba(0,0,0,0.30)",
+  "0 4px 12px rgba(0,0,0,0.18)",
+  "0 4px 11px rgba(0,0,0,0.28)",
+  "0 4px 14px rgba(0,0,0,0.35)",
+  "0 4px 14px rgba(0,0,0,0.35)",
+  "0 4px 12px rgba(0,0,0,0.18)",
+  "0 3px 9px rgba(0,0,0,0.16)",
+  "0 4px 12px rgba(0,0,0,0.20)",
+  "0 4px 12px rgba(0,0,0,0.18)",
 ];
 
 const FLIP_ROTATE_TRANSITION = {
@@ -54,6 +54,10 @@ const HALO_OPACITY_VALUES = [0, 0.15, 0.25, 0.10, 0];
 
 /* ── Height settle duration ────────────────────────────────────────── */
 const HEIGHT_SETTLE_DELAY_MS = 50;
+/** Extra window pixels added during flip so the 3D rotation + enlarged
+ *  shadows are never clipped by the WebView boundary. Removed once the
+ *  card height animation finishes. */
+const FLIP_WINDOW_EXTRA = 32;
 /** Smooth height transition used for BOTH pre-expand and post-contract.
  *  ~400ms ease-out blends naturally with the 720ms flip. The pre-expand
  *  reaches max around the time the card hits 90°, and the post-contract
@@ -75,6 +79,8 @@ export function FlipCard({
 }: FlipCardProps) {
   const frontRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLDivElement>(null);
+  /** Timer handle for the delayed window-shrink after flip settles. */
+  const shrinkTimerRef = useRef<number>(0);
 
   // ── Height management: "Flip → Settle → Resize" strategy ──────────
 
@@ -94,13 +100,16 @@ export function FlipCard({
       setIsFlipAnimating(true);
       setFlipTrigger((n) => n + 1);
 
-      // Phase A: immediately lock to max height
+      // Cancel any pending window-shrink from a previous flip
+      window.clearTimeout(shrinkTimerRef.current);
+
+      // Phase A: immediately lock to max height + expand window for rotation
       const fh = frontRef.current?.offsetHeight ?? 0;
       const bh = backRef.current?.offsetHeight ?? 0;
       const maxH = Math.max(fh, bh);
       if (maxH > 0) {
         setTargetHeight(maxH);
-        onContentHeightChange?.(maxH);
+        onContentHeightChange?.(maxH + FLIP_WINDOW_EXTRA);
       }
     }
   }, [isFlipped, onContentHeightChange]);
@@ -126,23 +135,30 @@ export function FlipCard({
     return () => observer.disconnect();
   }, [isFlipped, isFlipAnimating, onContentHeightChange]);
 
-  // Phase C: after flip animation completes, settle to exact target height
+  // Phase C: after flip animation completes, settle to exact target height.
+  // The window stays expanded while the card height animates down, then
+  // shrinks to fit once that transition finishes — no bottom clipping.
   const handleFlipComplete = useCallback(() => {
-    // Small delay before settling, so the "aftershock" feels finished
-    const timer = window.setTimeout(() => {
-      setIsFlipAnimating(false);
-
+    const settleTimer = window.setTimeout(() => {
+      // Keep isFlipAnimating true so the idle ResizeObserver stays
+      // suppressed while the height transition is in flight.
       requestAnimationFrame(() => {
         const exactH = isFlipped
           ? (backRef.current?.offsetHeight ?? 0)
           : (frontRef.current?.offsetHeight ?? 0);
         if (exactH > 0) {
           setTargetHeight(exactH);
-          onContentHeightChange?.(exactH);
+          // Delay window shrink until the card height animation completes
+          shrinkTimerRef.current = window.setTimeout(() => {
+            onContentHeightChange?.(exactH);
+            setIsFlipAnimating(false);
+          }, HEIGHT_TRANSITION.duration * 1000 + 50);
+        } else {
+          setIsFlipAnimating(false);
         }
       });
     }, HEIGHT_SETTLE_DELAY_MS);
-    return () => window.clearTimeout(timer);
+    return () => window.clearTimeout(settleTimer);
   }, [isFlipped, onContentHeightChange]);
 
   // ── Build animation values ────────────────────────────────────────
@@ -152,7 +168,7 @@ export function FlipCard({
   return (
     <div
       data-tauri-drag-region
-      className="relative flex min-h-full w-full items-center justify-center p-4"
+      className="relative flex min-h-full w-full items-center justify-center px-4 pt-4 pb-8"
       style={{ perspective: 1200 }}
     >
       <motion.section

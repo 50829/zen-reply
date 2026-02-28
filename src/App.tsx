@@ -13,7 +13,7 @@ import { useZenReplyFlow } from "./hooks/useZenReplyFlow";
 const WINDOW_FIXED_WIDTH = 600;
 const WINDOW_MIN_HEIGHT = 280;
 const WINDOW_MAX_HEIGHT = 980;
-const WINDOW_VERTICAL_PADDING = 32;
+const WINDOW_VERTICAL_PADDING = 40;
 
 function App() {
   const panelRef = useRef<HTMLElement | null>(null);
@@ -132,10 +132,7 @@ function App() {
 
   // ── Derived values ──
 
-  const resultVisible = stage === "GENERATING" || stage === "FINISHED";
-  const panelWidthClass = resultVisible
-    ? "w-[96vw] max-w-[980px]"
-    : "w-[92vw] max-w-[720px]";
+  const panelWidthClass = "w-[568px]";
 
   // ── Render ──
 
