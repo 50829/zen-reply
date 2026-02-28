@@ -47,6 +47,12 @@ export function FlipCard({
 
   const [targetHeight, setTargetHeight] = useState(0);
   const [isFlipAnimating, setIsFlipAnimating] = useState(false);
+
+  // Sync card height to CSS variable so Toast can track card center.
+  const updateTargetHeight = useCallback((h: number) => {
+    setTargetHeight(h);
+    document.documentElement.style.setProperty("--card-height", `${h}px`);
+  }, []);
   const isFlipAnimatingRef = useRef(false);
   const prevFlippedRef = useRef(isFlipped);
   const hasEverFlipped = useRef(false);
@@ -88,11 +94,11 @@ export function FlipCard({
       const bh = backRef.current?.offsetHeight ?? 0;
       const maxH = Math.max(fh, bh);
       if (maxH > 0) {
-        setTargetHeight(maxH);
+        updateTargetHeight(maxH);
         reportContentHeight(maxH + FLIP_WINDOW_EXTRA);
       }
     }
-  }, [isFlipped, reportContentHeight]);
+  }, [isFlipped, reportContentHeight, updateTargetHeight]);
 
   // ── Observe face resizes when NOT flip-animating ───────────────────
 
@@ -106,7 +112,7 @@ export function FlipCard({
         ? (backRef.current?.offsetHeight ?? 0)
         : (frontRef.current?.offsetHeight ?? 0);
       if (h > 0) {
-        setTargetHeight(h);
+        updateTargetHeight(h);
         reportContentHeight(h);
       }
     };
@@ -116,7 +122,7 @@ export function FlipCard({
     if (frontRef.current) observer.observe(frontRef.current);
     if (backRef.current) observer.observe(backRef.current);
     return () => observer.disconnect();
-  }, [isFlipped, isFlipAnimating, reportContentHeight]);
+  }, [isFlipped, isFlipAnimating, reportContentHeight, updateTargetHeight]);
 
   // ── Flip complete: settle height ───────────────────────────────────
 

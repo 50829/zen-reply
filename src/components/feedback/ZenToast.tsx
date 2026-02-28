@@ -43,16 +43,17 @@ export function ZenToast() {
   return (
     <AnimatePresence>
       {toast ? (
-        <motion.div
-          key={`zen-toast-${toast.variant}-${toast.message}`}
-          initial={{ y: 10, opacity: 0, scale: 0.92 }}
-          animate={{ y: 0, opacity: 1, scale: 1 }}
-          exit={{ y: -8, opacity: 0, scale: 0.95 }}
-          transition={SPRING_TOAST}
-          className="pointer-events-none fixed inset-0 z-9999 flex items-center justify-center"
-        >
-          <ToastContent toast={toast} />
-        </motion.div>
+        <div className="zen-toast-anchor pointer-events-none fixed inset-x-0 z-9999 flex justify-center">
+          <motion.div
+            key={`zen-toast-${toast.variant}-${toast.message}`}
+            initial={{ y: 10, opacity: 0, scale: 0.92 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: -8, opacity: 0, scale: 0.95 }}
+            transition={SPRING_TOAST}
+          >
+            <ToastContent toast={toast} />
+          </motion.div>
+        </div>
       ) : null}
     </AnimatePresence>
   );
@@ -64,7 +65,7 @@ function ToastContent({ toast }: { toast: ToastState }) {
 
   return (
     <div
-      className={`flex max-w-[86%] items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm backdrop-blur-2xl ${style.border} ${style.bg} ${style.text} ${style.glow}`}
+      className={`flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm whitespace-nowrap backdrop-blur-2xl ${style.border} ${style.bg} ${style.text} ${style.glow}`}
     >
       <Icon className={`h-4 w-4 shrink-0 ${style.iconClass}`} />
       <span className="leading-6">{toast.message}</span>

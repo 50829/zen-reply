@@ -81,6 +81,13 @@ body {
   }
 }
 
+/* ── Toast anchor — tracks card center, smoothly ── */
+.zen-toast-anchor {
+  top: calc(4rem + var(--card-height, 280px) / 2);
+  transform: translateY(-50%);
+  transition: top 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 /* ── Panel entrance ── */
 .zen-panel-enter {
   opacity: 1;
