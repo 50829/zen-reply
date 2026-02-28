@@ -3,7 +3,6 @@ import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 
 type UseAutoResizeWindowOptions = {
   width: number;
-  minHeight: number;
   maxHeight: number;
   verticalPadding: number;
 };
@@ -32,10 +31,10 @@ export function useAutoResizeWindow(options: UseAutoResizeWindowOptions) {
    * This is the **single source of truth** for the window height.
    */
   const reportContentHeight = useCallback((height: number) => {
-    const { width, minHeight, maxHeight, verticalPadding } = optsRef.current;
+    const { width, maxHeight, verticalPadding } = optsRef.current;
 
     const nextHeight = Math.round(
-      Math.min(maxHeight, Math.max(minHeight, height + verticalPadding)),
+      Math.min(maxHeight, height + verticalPadding),
     );
 
     const sizeChanged = nextHeight !== lastAppliedHeightRef.current;

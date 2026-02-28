@@ -23,12 +23,6 @@ export const SECTION_TRANSITION = {
   ease: "easeOut" as const,
 } as const;
 
-/** Height settle after flip. */
-export const HEIGHT_TRANSITION = {
-  duration: 0.4,
-  ease: EASE_SMOOTH,
-} as const;
-
 /** Quick element fade (custom role input/button swap). */
 export const FADE_TRANSITION = {
   duration: 0.15,

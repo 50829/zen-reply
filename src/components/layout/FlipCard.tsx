@@ -17,10 +17,8 @@ import {
   FORWARD_ROTATE,
   HALO_OPACITY_TIMES,
   HALO_OPACITY_VALUES,
-  HEIGHT_SETTLE_DELAY_MS,
   WINDOW_FIXED_WIDTH,
   WINDOW_MAX_HEIGHT,
-  WINDOW_MIN_HEIGHT,
   WINDOW_VERTICAL_PADDING,
 } from "../../shared/tokens";
 import {
@@ -28,7 +26,6 @@ import {
   FLIP_SCALE_TRANSITION,
   FLIP_SHADOW_TRANSITION,
   HALO_TRANSITION,
-  HEIGHT_TRANSITION,
   MOUNT_TRANSITION,
 } from "../../shared/motion";
 
@@ -49,11 +46,10 @@ export function FlipCard({
 }: FlipCardProps) {
   const frontRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLDivElement>(null);
-  const shrinkTimerRef = useRef<number>(0);
 
   // ── Height management ──────────────────────────────────────────────
 
-  const [targetHeight, setTargetHeight] = useState(WINDOW_MIN_HEIGHT);
+  const [targetHeight, setTargetHeight] = useState(0);
   const [isFlipAnimating, setIsFlipAnimating] = useState(false);
   const isFlipAnimatingRef = useRef(false);
   const prevFlippedRef = useRef(isFlipped);
@@ -65,7 +61,6 @@ export function FlipCard({
 
   const { reportContentHeight, resetVisibility } = useAutoResizeWindow({
     width: WINDOW_FIXED_WIDTH,
-    minHeight: WINDOW_MIN_HEIGHT,
     maxHeight: WINDOW_MAX_HEIGHT,
     verticalPadding: WINDOW_VERTICAL_PADDING,
   });
@@ -92,8 +87,6 @@ export function FlipCard({
       isFlipAnimatingRef.current = true;
       setIsFlipAnimating(true);
       setFlipTrigger((n) => n + 1);
-
-      window.clearTimeout(shrinkTimerRef.current);
 
       const fh = frontRef.current?.offsetHeight ?? 0;
       const bh = backRef.current?.offsetHeight ?? 0;
@@ -132,25 +125,17 @@ export function FlipCard({
   // ── Flip complete: settle height ───────────────────────────────────
 
   const handleFlipComplete = useCallback(() => {
-    const settleTimer = window.setTimeout(() => {
-      requestAnimationFrame(() => {
-        const exactH = isFlipped
-          ? (backRef.current?.offsetHeight ?? 0)
-          : (frontRef.current?.offsetHeight ?? 0);
-        if (exactH > 0) {
-          setTargetHeight(exactH);
-          shrinkTimerRef.current = window.setTimeout(() => {
-            reportContentHeight(exactH);
-            isFlipAnimatingRef.current = false;
-            setIsFlipAnimating(false);
-          }, HEIGHT_TRANSITION.duration * 1000 + 50);
-        } else {
-          isFlipAnimatingRef.current = false;
-          setIsFlipAnimating(false);
-        }
-      });
-    }, HEIGHT_SETTLE_DELAY_MS);
-    return () => window.clearTimeout(settleTimer);
+    requestAnimationFrame(() => {
+      const exactH = isFlipped
+        ? (backRef.current?.offsetHeight ?? 0)
+        : (frontRef.current?.offsetHeight ?? 0);
+      if (exactH > 0) {
+        setTargetHeight(exactH);
+        reportContentHeight(exactH);
+      }
+      isFlipAnimatingRef.current = false;
+      setIsFlipAnimating(false);
+    });
   }, [isFlipped, reportContentHeight]);
 
   // ── Animation values ───────────────────────────────────────────────
@@ -176,19 +161,20 @@ export function FlipCard({
         {/* 3D Flip Container */}
         <motion.div
           className="relative w-full rounded-3xl transform-3d"
-          style={{ willChange: isFlipAnimating ? "transform" : "auto" }}
+          style={{
+            height: targetHeight || "auto",
+            willChange: isFlipAnimating ? "transform" : "auto",
+          }}
           initial={false}
           animate={{
             rotateY: animateRotateY,
             scale: animateScale,
             boxShadow: animateShadow,
-            height: targetHeight,
           }}
           transition={{
             rotateY: FLIP_ROTATE_TRANSITION,
             scale: FLIP_SCALE_TRANSITION,
             boxShadow: FLIP_SHADOW_TRANSITION,
-            height: HEIGHT_TRANSITION,
           }}
           onAnimationComplete={handleFlipComplete}
         >

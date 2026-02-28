@@ -5,7 +5,6 @@
 // ── Layout ───────────────────────────────────────────────────────────
 
 export const WINDOW_FIXED_WIDTH = 600;
-export const WINDOW_MIN_HEIGHT = 280;
 export const WINDOW_MAX_HEIGHT = 980;
 export const WINDOW_VERTICAL_PADDING = 40;
 
@@ -59,8 +58,6 @@ export const FLIP_STATIC_SHADOW = "0 4px 12px rgba(0,0,0,0.18)";
 
 /** Extra px added during flip so 3D rotation isn't clipped. */
 export const FLIP_WINDOW_EXTRA = 32;
-/** Delay (ms) after flip completes before height settles. */
-export const HEIGHT_SETTLE_DELAY_MS = 50;
 
 // ── Halo Sweep ───────────────────────────────────────────────────────
 
