@@ -1,83 +1,56 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useCallback, useRef } from "react";
 import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 
 type UseAutoResizeWindowOptions = {
-  panelRef: RefObject<HTMLElement | null>;
-  triggerKey: number;
   width: number;
   minHeight: number;
   maxHeight: number;
   verticalPadding: number;
 };
 
+/**
+ * Manages the Tauri window size so it tracks the panel content height.
+ *
+ * Exposes `reportContentHeight(h)` — called by FlipCard whenever the real
+ * content height changes.  After resizing, the hook shows the window
+ * (and focuses it) so the user never sees a stale/empty transparent frame.
+ */
 export function useAutoResizeWindow(options: UseAutoResizeWindowOptions) {
-  const resizeRafRef = useRef<number | null>(null);
   const lastAppliedHeightRef = useRef(0);
 
-  const { panelRef, triggerKey, width, minHeight, maxHeight, verticalPadding } = options;
+  // Keep latest options in a ref so the callback identity never changes.
+  const optsRef = useRef(options);
+  optsRef.current = options;
 
-  useEffect(() => {
-    const appWindow = getCurrentWindow();
-    let active = true;
-    let observer: ResizeObserver | null = null;
+  /**
+   * Called by FlipCard whenever the measured face height changes.
+   * This is the **single source of truth** for the window height.
+   */
+  const reportContentHeight = useCallback((height: number) => {
+    const { width, minHeight, maxHeight, verticalPadding } = optsRef.current;
 
-    const clearResizeRaf = () => {
-      if (resizeRafRef.current !== null) {
-        window.cancelAnimationFrame(resizeRafRef.current);
-        resizeRafRef.current = null;
-      }
-    };
+    const nextHeight = Math.round(
+      Math.min(maxHeight, Math.max(minHeight, height + verticalPadding)),
+    );
 
-    const applyWindowSize = async () => {
-      if (!active) {
-        return;
-      }
+    const sizeChanged = nextHeight !== lastAppliedHeightRef.current;
+    lastAppliedHeightRef.current = nextHeight;
 
-      const panelHeight = panelRef.current?.getBoundingClientRect().height ?? 0;
-      if (!panelHeight) {
-        return;
-      }
-
-      const nextHeight = Math.round(
-        Math.min(maxHeight, Math.max(minHeight, panelHeight + verticalPadding)),
-      );
-
-      if (nextHeight === lastAppliedHeightRef.current) {
-        return;
-      }
-
-      lastAppliedHeightRef.current = nextHeight;
-
+    void (async () => {
       try {
-        await appWindow.setResizable(true);
-        await appWindow.setMinSize(new LogicalSize(width, minHeight));
-        await appWindow.setMaxSize(new LogicalSize(width, maxHeight));
-        await appWindow.setSize(new LogicalSize(width, nextHeight));
+        const w = getCurrentWindow();
+        if (sizeChanged) {
+          await w.setSize(new LogicalSize(width, nextHeight));
+        }
+        // Always ensure the window is visible & focused after sizing.
+        // show() and setFocus() are no-ops if already shown/focused.
+        await w.show();
+        await w.setFocus();
       } catch {
-        // Best effort sync; window size update failure should not block UI.
+        // Permission errors or IPC failures — best-effort.
       }
-    };
+    })();
+  }, []);
 
-    const scheduleResize = () => {
-      clearResizeRaf();
-      resizeRafRef.current = window.requestAnimationFrame(() => {
-        void applyWindowSize();
-      });
-    };
-
-    scheduleResize();
-
-    if (panelRef.current && typeof ResizeObserver !== "undefined") {
-      observer = new ResizeObserver(() => {
-        scheduleResize();
-      });
-      observer.observe(panelRef.current);
-    }
-
-    return () => {
-      active = false;
-      clearResizeRaf();
-      observer?.disconnect();
-    };
-  }, [maxHeight, minHeight, panelRef, triggerKey, verticalPadding, width]);
+  return { reportContentHeight };
 }

@@ -107,9 +107,7 @@ function App() {
 
   // ── Infrastructure hooks ──
 
-  useAutoResizeWindow({
-    panelRef,
-    triggerKey: panelAnimateKey,
+  const { reportContentHeight } = useAutoResizeWindow({
     width: WINDOW_FIXED_WIDTH,
     minHeight: WINDOW_MIN_HEIGHT,
     maxHeight: WINDOW_MAX_HEIGHT,
@@ -150,6 +148,7 @@ function App() {
           panelAnimateKey={panelAnimateKey}
           panelWidthClass={panelWidthClass}
           minHeight={WINDOW_MIN_HEIGHT}
+          onContentHeightChange={reportContentHeight}
           front={
               <WorkArea
               stage={stage}

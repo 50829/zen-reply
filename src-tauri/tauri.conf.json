@@ -15,11 +15,16 @@
         "label": "main",
         "title": "ZenReply",
         "width": 600,
-        "height": 450,
+        "height": 280,
+        "minWidth": 600,
+        "minHeight": 280,
+        "maxWidth": 600,
+        "maxHeight": 980,
         "center": true,
         "resizable": true,
         "decorations": false,
         "transparent": true,
+        "shadow": true,
         "visible": false
       }
     ],

@@ -1,4 +1,4 @@
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useLayoutEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 
 type FlipCardProps = {
@@ -9,6 +9,10 @@ type FlipCardProps = {
   panelAnimateKey: number;
   panelWidthClass: string;
   minHeight: number;
+  /** Reports the measured content height (max of front/back faces) so the
+   *  window can be resized to exactly fit the content, independent of any
+   *  intermediate animation height applied by Framer Motion. */
+  onContentHeightChange?: (height: number) => void;
 };
 
 export function FlipCard({
@@ -19,18 +23,24 @@ export function FlipCard({
   panelAnimateKey,
   panelWidthClass,
   minHeight,
+  onContentHeightChange,
 }: FlipCardProps) {
   const frontRef = useRef<HTMLDivElement>(null);
   const backRef = useRef<HTMLDivElement>(null);
   const [flipHeight, setFlipHeight] = useState(minHeight);
 
-  // Measure both faces and use max height for stable 3D flip transition
-  useEffect(() => {
+  // Measure both faces and use max height for stable 3D flip transition.
+  // useLayoutEffect ensures the first measurement runs before the browser paints,
+  // preventing a single-frame flash at the stale minHeight value.
+  useLayoutEffect(() => {
     const measure = () => {
       const fh = frontRef.current?.offsetHeight ?? 0;
       const bh = backRef.current?.offsetHeight ?? 0;
       const h = Math.max(fh, bh);
-      if (h > 0) setFlipHeight(h);
+      if (h > 0) {
+        setFlipHeight(h);
+        onContentHeightChange?.(h);
+      }
     };
     measure();
 
@@ -38,25 +48,26 @@ export function FlipCard({
     if (frontRef.current) observer.observe(frontRef.current);
     if (backRef.current) observer.observe(backRef.current);
     return () => observer.disconnect();
-  }, [isFlipped]);
+  }, [isFlipped, onContentHeightChange]);
 
   return (
     <div
-      className="relative flex h-full w-full items-center justify-center overflow-hidden p-4"
+      className="relative flex min-h-full w-full items-center justify-center p-4"
       style={{ perspective: 1200 }}
     >
       <motion.section
         key={panelAnimateKey}
         ref={panelRef}
-        initial={{ y: 20, opacity: 0, scale: 0.95 }}
-        animate={{ y: 0, opacity: 1, scale: 1 }}
-        transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+        initial={{ opacity: 0, scale: 0.97 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
         style={{ transformStyle: "preserve-3d" }}
         className={`transition-[max-width,width] duration-300 ${panelWidthClass}`}
       >
         <motion.div
           className="relative w-full"
           style={{ transformStyle: "preserve-3d" }}
+          initial={false}
           animate={{
             rotateY: isFlipped ? 180 : 0,
             height: flipHeight,

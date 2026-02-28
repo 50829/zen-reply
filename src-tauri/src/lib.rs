@@ -171,9 +171,9 @@ where
     let (text, previous) = quick_capture(app);
 
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+        // Do NOT show/focus here — let JS side show the window AFTER
+        // it has measured + resized the content, preventing the
+        // transparent-shell flash and first-launch blank panel.
         let _ = window.emit(CLIPBOARD_EVENT, ClipboardPayload { text: text.clone() });
     }
 
@@ -204,6 +204,12 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
+            // Set transparent background for the webview to prevent the default
+            // white flash that appears for 1-2 frames when the window is shown.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_background_color(Some(tauri::window::Color(0, 0, 0, 0)));
+            }
+
             app.global_shortcut()
                 .on_shortcut(ACTIVATION_SHORTCUT, |app, _shortcut, event| {
                     if event.state == ShortcutState::Released {

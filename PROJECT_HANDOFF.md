@@ -93,197 +93,36 @@ src-tauri/
 | 键盘快捷键全覆盖 | `useGlobalShortcuts.ts` |
 | 确认后自动复制 + 延迟关窗 | `confirmAndCopy` → writeText → 800ms hide |
 
-### ❌ 当前存在严重 Bug（P0）
+## 5. 多AI并行任务规范
+- 任务启动： 在修改任何代码前，AI 必须先检查 devlog/MANIFEST.md。如果该文件内没有当前任务，AI 需根据用户当前需求与当天日期，在该/devlog中创建一个任务描述，按日期_序号.md命名，同一日期下文件命名方式按文件存在的顺序记录，如0228_01.md、0228_02.md等。包含：【问题现状】、【底层原因分析】、【预期的改动点】。若该文件有实际内容，AI 需先对内容进行分析，确认是否与用户当前需求相关，若相关则继续在该文件中更新任务描述，若不相关则需要用户确认是否开启一个新任务。
 
-#### Bug 1：窗口动画闪烁（双重动画）
+- 调研完成后，在MANIFEST.md中登记该任务，设置状态为Research，标明ID、Scope（文件锁定范围）和Owner（负责该任务的AI）。Scope应尽可能精确，覆盖所有相关改动但不宜过大，以减少与其他任务的冲突。登记后保存后再开始改动，保证其他AI可读到文件锁定信息。
 
-**现象：** Alt+Space 后黑色面板立即出现 → 短暂闪烁消失 → 从底部滑入一个新面板。
+- 方案确认： AI 必须等待用户对 devlog/MMDD_Number.md 中的方案回复“确认”或进行修改后，方可开始修改代码。并在用户确认后，将该任务在 devlog/MANIFEST.md 中的状态从Research转为 In progress，标明 ID、Scope（文件锁定范围）和 Owner（负责该任务的 AI）。Scope 应尽可能精确，覆盖所有相关改动但不宜过大，以减少与其他任务的冲突。标记后保存后再开始改动，保证其他AI可读到文件锁定信息。
 
-**根因链路：**
+- 实施与记录：修改代码前，AI应先阅读devlog/MANIFEST.md中所有In progress条目中的锁定文件。若当前任务的scope与In progress条目中有锁冲突，则将任务设置为Pending，告诉用户有编辑冲突，并不修改任何文件。代码修改完成后，AI 需记录【实际改动记录】及【潜在风险】在/MMDD_Number.md中。用户手动审核代码，并把任务状态标记为done。
 
-```
-window.show()
-  → 窗口可见，React 已渲染 FlipCard key=0 (initial={false}，全透明度静态呈现)
-  → 用户看到完整面板（第一帧）
+- 归档： 一个任务彻底测试通过后，由用户将该文档内容移动至 devlog/archive/ 文件夹下，以日期_序号命名（如0228_01.md），描述你干了什么，并清理MANIFEST.md中相应条目。一个问题单开一个文件，同一日期下文件命名方式按文件存在的顺序记录，如0228_01.md、0228_02.md等。
 
-emit(CLIPBOARD_EVENT)
-  → JS 事件循环处理 → onWake() → setPanelAnimateKey(0 → 1)
-  → React 销毁 key=0 的 motion.section，挂载 key=1
-  → key=1 的 initial={{ y:20, opacity:0, scale:0.95 }} → animate 入场
-  → 用户看到面板消失后从底部滑入（第二帧起）
-```
 
-**核心矛盾：** `panelAnimateKey` 递增导致 FlipCard **卸载+重建**。`window.show()` 和 `emit()` 之间存在至少 1 帧间隙，key=0 的面板在这一帧内可见。
+AI 并行开发规范 (Multi-Agent Protocol)
 
-#### Bug 2：选区文本未被捕获（剪贴板逻辑破坏）
+Step 1: 冲突检查 (Pre-flight Check)
+在执行任何修改前，必须读取 devlog/MANIFEST.md。
+检查 Active Tasks 中是否有任务锁定（Locks）了你计划修改的文件。
+如果有冲突，停止操作并告知用户：“文件 [文件名] 正被任务 [ID] 锁定，请等待或手动调整优先级。”
 
-**现象：** 选中文本按 Alt+Space 后，原始文本显示的是剪贴板旧内容而非选区内容。
+Step 2: 任务登记 (Registration)
+如果无冲突，在 Active Tasks 表格中新增一行，填写 ID、Scope 和你的 Owner 名称。
 
-**根因链路：**
+Step 3: 创建日志 (Task Logging)
+在 devlog/ 下创建具体的任务文档（如 0228_01_Name.md），详细描述问题及方案。
 
-```
-on_shortcut_pressed (当前错误的异步方案):
-  window.show()           ← ZenReply 获得焦点 ⚠️
-  window.set_focus()      ← 源应用（微信/飞书）失去焦点 ⚠️
-  emit(CLIPBOARD_EVENT, "")
-
-  thread::spawn → capture_selected_text:
-    trigger_copy_shortcut()   ← enigo 发送 Ctrl+C
-                              ← 但此时焦点在 ZenReply！
-                              ← Ctrl+C 作用于 ZenReply 窗口，不是源应用
-    clipboard.read()          ← 读到的是旧剪贴板内容
-    emit(CLIPBOARD_CAPTURED)  ← 发送旧内容
-```
-
-**核心矛盾：** 模拟按键式剪贴板捕获（enigo Ctrl+C）依赖 **源应用持有焦点**。`window.show()` + `set_focus()` 在捕获**之前**抢走了焦点，导致 Ctrl+C 发送到了错误的窗口。这是**架构级缺陷**——异步捕获方案从根本上不可行。
-
----
-
-## 5. 启动流程根因分析与修复方案
-
-### 5.1 不可违反的物理约束
-
-| 约束 | 原因 |
-|---|---|
-| **Ctrl+C 必须在 `window.show()` 之前执行** | enigo 模拟按键作用于当前焦点窗口。show+focus 后焦点不在源应用。 |
-| **`window.show()` 之前不应有 React 可见内容** | 否则用户会看到"旧帧"闪烁。 |
-| **捕获延迟应尽量短** | 用户可感知的延迟阈值约 100-150ms。 |
-
-### 5.2 推荐方案：同步快速捕获 + 条件渲染 + 异步兜底
-
-#### Phase A — Rust：优化 `on_shortcut_pressed`
-
-**策略：先捕获，再显示。用快速同步路径覆盖 90%+ 的场景，异步兜底覆盖慢速应用。**
-
-```
-on_shortcut_pressed(app):
-  ┌─ 同步快速路径（~90ms）─────────────────────────────────┐
-  │ 1. previous = clipboard.read()              // ~1ms    │
-  │ 2. sleep(30ms)              // 等待 Alt+Space 完全释放 │
-  │ 3. trigger_copy_shortcut()  // enigo Ctrl+C   ~5ms     │
-  │ 4. sleep(50ms)              // 等待源应用处理复制       │
-  │ 5. current = clipboard.read()               // ~1ms    │
-  │ 6. text = (current != previous) ? current : ""         │
-  └────────────────────────────────────────────────────────┘
-  7. window.show() + set_focus()
-  8. emit("zenreply://clipboard-text", { text })
-
-  ┌─ 异步兜底（仅当 text 为空时）──────────────────────────┐
-  │ thread::spawn:                                         │
-  │   for _ in 0..10:                                      │
-  │     sleep(30ms)                                        │
-  │     t = clipboard.read()                               │
-  │     if t != previous && !t.is_empty():                 │
-  │       emit("zenreply://clipboard-captured", { t })     │
-  │       return                                           │
-  └────────────────────────────────────────────────────────┘
-```
-
-**对比旧代码（改动前的原版）：**
-- 旧同步捕获：80 + 12×35 = **500ms 最佳**，80 + 12×35 + 8×35 = **780ms 最差**
-- 新同步路径：30 + 50 = **~87ms 固定**
-- 用户感知：几乎即时弹窗，提速 5-8 倍
-
-**注意：** `ShortcutState::Released` 已确保 Alt+Space 物理释放，30ms 只是给 OS 留的缓冲余量，可根据实测适当调整。
-
-#### Phase B — React：条件渲染消除双重动画
-
-**策略：引入 `isAwake` 状态，FlipCard 仅在唤醒后才挂载，杜绝 key=0 闪帧。**
-
-```tsx
-// useZenReplyFlow.ts
-const [isAwake, setIsAwake] = useState(false);
-
-// onWake:
-setIsAwake(true);
-setPanelAnimateKey(prev => prev + 1);
-
-// resetFlow (hide 时调用):
-setIsAwake(false);
-
-// App.tsx render:
-{isAwake ? (
-  <FlipCard
-    panelAnimateKey={panelAnimateKey}
-    initial={{ y: 20, opacity: 0, scale: 0.95 }}   // 始终从动画起点开始
-    ...
-  />
-) : null}
-```
-
-**为什么这能解决双重动画：**
-
-| 时序 | 旧行为 | 新行为 |
-|---|---|---|
-| `window.show()` | key=0 面板可见（闪帧） | `isAwake=false` → 无内容渲染 → 透明窗口 |
-| `onWake()` | key 递增 → 卸载旧 + 挂载新 = 双重动画 | `isAwake=true` → FlipCard **首次挂载** → 单次入场动画 |
-| 后续唤醒 | 同样双重动画 | `resetFlow` 设 `isAwake=false`（窗口已隐藏时卸载，不可见）→ 唤醒时全新挂载 |
-
-**FlipCard `initial` 可恢复为固定值**（不再需要 `panelAnimateKey === 0 ? false : ...` 的 hack）。
-
-#### Phase C — 前端：双事件监听（已实现，保留）
-
-| 事件 | 触发时机 | 前端处理 |
-|---|---|---|
-| `zenreply://clipboard-text` | Rust 同步路径后立即发送 | `onWake(text)` — 重置 UI + 填入文本 |
-| `zenreply://clipboard-captured` | 异步兜底成功时发送 | `setRawText(text)` — 仅更新文本，不重置 UI |
-
-### 5.3 方案优势总结
-
-| 维度 | 改进 |
-|---|---|
-| 启动速度 | 500-780ms → ~87ms（快 5-8 倍） |
-| 动画正确性 | 双重动画 → 单次平滑入场 |
-| 选区捕获 | 焦点被抢走导致失败 → 捕获在 show 之前完成 |
-| 代码复杂度 | 删除 `panelAnimateKey === 0` hack，引入语义清晰的 `isAwake` |
-| 兼容性 | 异步兜底覆盖剪贴板更新慢的应用 |
-
----
-
-## 6. 下一步实施清单（按序执行）
-
-### Step 1：修复 Rust `on_shortcut_pressed`（关键路径）
-
-**文件：** `src-tauri/src/lib.rs`
-
-1. 重写 `on_shortcut_pressed`：先快速同步捕获（30ms sleep → Ctrl+C → 50ms sleep → 读取），再 `window.show()`
-2. 仅当快速路径未获取到文本（`text.is_empty()`）时，才启动异步兜底线程
-3. 可精简或重写 `capture_selected_text` 函数，移除旧的 12+8 次轮询逻辑
-
-### Step 2：前端引入 `isAwake` 条件渲染（消除双重动画）
-
-**文件：** `src/hooks/useZenReplyFlow.ts` → `src/App.tsx` → `src/components/layout/FlipCard.tsx`
-
-1. `useZenReplyFlow` 新增 `isAwake` state，初始 `false`
-2. `onWake` 设 `isAwake = true`
-3. `resetFlow` 设 `isAwake = false`
-4. `App.tsx` 中 `{isAwake ? <FlipCard .../> : null}`
-5. `FlipCard` 移除 `panelAnimateKey === 0 ? false : ...` hack，`initial` 恢复为固定动画起点
-6. `useZenReplyFlow` return 中暴露 `isAwake`
-
-### Step 3：验证与回归
-
-1. `tsc --noEmit` — TypeScript 零错误
-2. `cargo check` — Rust 零错误
-3. 手动测试矩阵：
-   - [ ] 微信：选中文本 → Alt+Space → 面板显示选中文本
-   - [ ] 飞书/浏览器：同上
-   - [ ] 未选中文本 → Alt+Space → textarea 为空
-   - [ ] 连续操作：Alt+Space → Esc → Alt+Space → 无闪烁，单次动画
-   - [ ] 设置面板翻转正常
-   - [ ] AI 生成 → 确认 → 复制 → 关窗 全流程正常
-
-### Step 4：工程化补齐（发布前）
-
-| 项 | 说明 |
-|---|---|
-| 品牌统一 | `tauri.conf.json` → `productName: "ZenReply"`, `identifier: "com.zenreply.app"` |
-| CSP 收敛 | `"csp": null` → 配置实际允许的域（至少允许 API base URL） |
-| Lint 脚本 | `package.json` 增加 `lint` / `typecheck` 脚本 |
-| CI | 最小 GitHub Actions：typecheck + cargo check + build |
-| 测试 | `tests/` 目录，先覆盖 `prompt.ts` + `utils.ts` + 错误映射 |
-
----
+Step 4: 完成与解锁 (Release)
+任务完成后：
+将详细任务文档移动至 devlog/archive/。
+在 MANIFEST.md 中将该任务状态改为 ✅ Done。
+清除该任务占用的 Scope Locks。
 
 ## 7. 键盘操作速查
 
