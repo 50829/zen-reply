@@ -94,7 +94,7 @@ export function RoleComposer({ onGenerate }: RoleComposerProps) {
         </span>
 
         <div
-          className="max-w-full transition-[width] duration-150 ease-out"
+          className="max-w-full shrink-0 transition-[width] duration-150 ease-out"
           style={
             isCustomRoleEditing && inputWidth
               ? { width: inputWidth }
@@ -145,7 +145,7 @@ export function RoleComposer({ onGenerate }: RoleComposerProps) {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={FADE_TRANSITION}
-                className={`rounded-full border text-xs transition active:scale-[0.97] ${
+                className={`whitespace-nowrap rounded-full border text-xs transition active:scale-[0.97] ${
                   targetRole === "custom" && customRoleName
                     ? "px-3 py-1.5 border-cyan-300/60 bg-cyan-300/20 text-cyan-100"
                     : targetRole === "custom"
