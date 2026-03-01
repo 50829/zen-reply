@@ -1,5 +1,5 @@
 [package]
-name = "tauri-app"
+name = "ZenReply"
 version = "0.1.0"
 description = "ZenReply — AI-powered communication assistant"
 authors = ["you"]
