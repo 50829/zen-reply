@@ -1,6 +1,7 @@
 # ZenReply 项目开发交接文档
 
-更新时间：2026-02-27  
+更新时间：2026-03-01  
+版本：v0.1.0  
 适用对象：下一窗口/下一位协作者快速接手开发与发布
 
 ---
@@ -23,7 +24,7 @@
 
 | 层 | 技术 | 说明 |
 |---|---|---|
-| 桌面壳 | **Tauri v2** (Rust) | 窗口管理、全局快捷键、剪贴板、本地存储 |
+| 桌面壳 | **Tauri v2** (Rust) | 窗口管理、全局快捷键、剪贴板、本地存储、系统托盘 |
 | 前端 | **React 19** + TypeScript + Vite | UI 与业务逻辑 |
 | 样式 | **Tailwind CSS v4** | 原子化样式 |
 | 动画 | **Framer Motion** | 入场/翻转/Toast 动画 |
@@ -38,91 +39,145 @@
 
 ```
 src/
-  App.tsx                          ← 组合根：连接 hooks，渲染 FlipCard + ZenToast
-  main.tsx                         ← ReactDOM 入口，StrictMode
-  index.css                        ← Tailwind import + 全局样式 + scrollbar + 翻转卡背面可见性
+  App.tsx                          <- 组合根：Context 注入，条件渲染 FlipCard + ZenToast
+  AppShortcuts.tsx                 <- 全局键盘快捷键分发（独立组件，由 AppInner 渲染）
+  main.tsx                         <- ReactDOM 入口，StrictMode
+  index.css                        <- Tailwind import + 全局样式 + scrollbar + 翻转卡背面可见性
 
   components/
-    layout/FlipCard.tsx            ← 3D 翻转容器 (前=WorkArea, 后=SettingsPanel)
-    zenreply/WorkArea.tsx          ← 主面板：原始文本 + 角色选择 + 结果区
-    zenreply/SourceTextCard.tsx    ← INPUT→textarea / 其他→只读 <p>
-    zenreply/RoleComposer.tsx      ← 角色按钮 + 自定义编辑 + 上下文 + 生成按钮
-    zenreply/ResultCard.tsx        ← 流式结果 + 确认/取消
-    settings/SettingsPanel.tsx     ← API Key / Base / Model 编辑 + 保存/测试
-    feedback/ZenToast.tsx          ← 统一居中 Toast（success/error/info）
+    layout/FlipCard.tsx            <- 3D 翻转容器 (前=WorkArea, 后=SettingsPanel)
+    zenreply/WorkArea.tsx          <- 主面板：原始文本 + 角色选择 + 结果区
+    zenreply/SourceTextCard.tsx    <- INPUT->textarea / 其他->只读 <p>
+    zenreply/RoleComposer.tsx      <- 角色按钮 + 自定义编辑 + 上下文 + 生成按钮
+    zenreply/ResultCard.tsx        <- 流式结果 + 确认/取消
+    settings/SettingsPanel.tsx     <- API Key / Base / Model 编辑 + 保存/测试
+    feedback/ZenToast.tsx          <- 统一居中 Toast（success/error/info）
+    shared/ClearableField.tsx      <- 带清除按钮的输入框组件
+    shared/GlassCard.tsx           <- 毛玻璃卡片容器
+
+  contexts/
+    AppProvider.tsx                <- 组合所有 Context Provider
+    SettingsContext.tsx            <- 设置状态上下文
+    ToastContext.tsx               <- Toast 状态上下文
+    ZenReplyContext.tsx            <- 主流程状态上下文
 
   hooks/
-    useZenReplyFlow.ts             ← 核心状态机 (INPUT→GENERATING→FINISHED)
-    useSettings.ts                 ← 设置读写 + 测试连接
-    useToast.ts                    ← Toast 状态 + 自动消隐 + onDismiss 回调
-    useLlmStream.ts                ← fetch SSE + 错误映射 + 超时 + abort
-    useGlobalShortcuts.ts          ← 全局键盘分发 (Esc/Enter/1-4/Ctrl+,/Ctrl+S)
-    useAutoResizeWindow.ts         ← ResizeObserver → setSize 自适应窗口高度
+    useZenReplyFlow.ts             <- 核心状态机 (INPUT->GENERATING->FINISHED)
+    useSettings.ts                 <- 设置读写 + 测试连接
+    useToast.ts                    <- Toast 状态 + 自动消隐 + onDismiss 回调
+    useLlmStream.ts                <- fetch SSE + 错误映射 + 超时 + abort
+    useGlobalShortcuts.ts          <- 全局键盘分发 (Esc/Enter/1-4/Ctrl+,/Ctrl+S)
+    useAutoResizeWindow.ts         <- ResizeObserver -> show_window 自适应窗口高度
 
   features/
-    settings/store.ts              ← plugin-store 读写 + 标准化
-    zenreply/types.ts              ← Stage / TargetRole / RoleOption 类型
-    zenreply/prompt.ts             ← Prompt 拼装逻辑
+    settings/store.ts              <- plugin-store 读写 + 标准化
+    zenreply/types.ts              <- Stage / TargetRole / RoleOption 类型
+    zenreply/prompt.ts             <- Prompt 拼装逻辑
 
   shared/
-    constants.ts                   ← DEFAULT_API_BASE, DEFAULT_MODEL_NAME
-    utils.ts                       ← normalizeValue, toErrorMessage
+    constants.ts                   <- DEFAULT_API_BASE, DEFAULT_MODEL_NAME, ROLE_OPTIONS
+    utils.ts                       <- normalizeValue, toErrorMessage
+    motion.ts                      <- 共享动画参数
+    tokens.ts                      <- 设计 token（颜色等）
 
 src-tauri/
-  src/lib.rs                       ← Rust 入口：快捷键注册、选区捕获、窗口管理、API 测试
-  tauri.conf.json                  ← 窗口配置（visible:false, transparent:true, decorations:false）
-  capabilities/default.json        ← 权限声明
+  src/lib.rs                       <- Rust 入口：快捷键注册、选区捕获、窗口管理、系统托盘、API 测试
+  tauri.conf.json                  <- 窗口配置（visible:false, transparent:true, decorations:false）
+  capabilities/default.json        <- 权限声明
 ```
 
 ---
 
 ## 4. 当前已实现功能
 
-### ✅ 正常工作
+### 正常工作
 
 | 功能 | 实现位置 |
 |---|---|
-| AI 流式生成 | `useLlmStream.ts` → fetch SSE |
+| AI 流式生成 | `useLlmStream.ts` -> fetch SSE |
 | 多角色切换 (老板/甲方/绿茶/自定义) | `RoleComposer.tsx` + `useZenReplyFlow.ts` |
 | 自定义角色编辑 | `RoleComposer` inline input + `confirmCustomRole` |
-| 设置持久化 (API Key/Base/Model) | `store.ts` → plugin-store |
+| 设置持久化 (API Key/Base/Model) | `store.ts` -> plugin-store |
 | 3D 翻转设置面板 | `FlipCard.tsx` (preserve-3d + backface-visibility) |
 | 统一 Toast (success/error/info) | `useToast.ts` + `ZenToast.tsx` |
 | 错误自动消隐 + 按钮禁用联动 | `hasBlockingError` + `clearBlockingErrorRef` bridge |
-| 窗口自适应高度 | `useAutoResizeWindow.ts` (ResizeObserver) |
-| 键盘快捷键全覆盖 | `useGlobalShortcuts.ts` |
-| 确认后自动复制 + 延迟关窗 | `confirmAndCopy` → writeText → 800ms hide |
+| 窗口自适应高度 | `useAutoResizeWindow.ts` (ResizeObserver -> show_window IPC) |
+| 键盘快捷键全覆盖 | `AppShortcuts.tsx` + `useGlobalShortcuts.ts` |
+| 确认后自动复制 + 延迟关窗 | `confirmAndCopy` -> writeText -> 800ms hide |
+| 系统托盘常驻 | `lib.rs` TrayIconBuilder + 托盘菜单（打开/设置/退出）|
+| 窗口关闭隐藏到托盘 | `on_window_event` CloseRequested -> prevent_close + hide |
+| 托盘菜单动态更新 | `update_tray_menu` 根据面板可见性切换菜单项 |
+| show_window 合并 IPC | `show_window` 命令：resize+center+show+focus 单次调用 |
+| 选区捕获异步化 | `on_shortcut_pressed` 在独立线程执行，不阻塞事件循环 |
+| 兜底异步捕获 | `fallback_capture` 轮询适配慢速应用（如 Electron）|
 
-## 5. 多AI并行任务规范
-- 任务启动： 在修改任何代码前，AI 必须先检查 devlog/MANIFEST.md。如果该文件内没有当前任务，AI 需根据用户当前需求与当天日期，在该/devlog中创建一个任务描述，按日期_序号.md命名，同一日期下文件命名方式按文件存在的顺序记录，如0228_01.md、0228_02.md等。包含：【问题现状】、【底层原因分析】、【预期的改动点】。预期改动点没必要把每个代码都写出来，写出关键逻辑改动即可。若该文件有实际内容，AI 需先对内容进行分析，确认是否与用户当前需求相关，若相关则继续在该文件中更新任务描述，若不相关则需要用户确认是否开启一个新任务。
+---
 
-- 调研完成后，在MANIFEST.md中登记该任务，设置状态为Research，标明ID、Scope（文件锁定范围）和Owner（负责该任务的AI）。Scope应尽可能精确，覆盖所有相关改动但不宜过大，以减少与其他任务的冲突。登记后保存后再开始改动，保证其他AI可读到文件锁定信息。
+## 5. 关键架构说明
 
-- 方案确认： AI 必须等待用户对 devlog/MMDD_Number.md 中的方案回复“确认”或进行修改后，方可开始修改代码。并在用户确认后，将该任务在 devlog/MANIFEST.md 中的状态从Research转为 In progress，标明 ID、Scope（文件锁定范围）和 Owner（负责该任务的 AI）。Scope 应尽可能精确，覆盖所有相关改动但不宜过大，以减少与其他任务的冲突。标记后保存后再开始改动，保证其他AI可读到文件锁定信息。
+### 5.1 启动时序（关键路径）
 
-- 实施与记录：修改代码前，AI应先阅读devlog/MANIFEST.md中所有In progress条目中的锁定文件。若当前任务的scope与In progress条目中有锁冲突，则将任务设置为Pending，告诉用户有编辑冲突，并不修改任何文件。代码修改完成后，AI 需记录【实际改动记录】及【潜在风险】在/MMDD_Number.md中。用户手动审核代码，并把任务状态标记为done。
+```
+Alt+Space Released
+  |
+  +-- 独立线程启动
+        |
+        ├── 1. 读取剪贴板（记录 previous）
+        ├── 2. sleep 30ms（等待 OS 处理按键释放）
+        ├── 3. enigo Ctrl+C（模拟复制）
+        ├── 4. sleep 50ms（等待源应用处理复制）
+        ├── 5. 读取剪贴板 -> 对比 previous，得到 text（约 87ms）
+        |
+        ├── 6. emit("zenreply://clipboard-text", { text })
+        |      前端收到后：onWake(text) -> 状态重置 + 文本填入
+        |      前端在 useAutoResizeWindow 测量完成后调用 show_window
+        |
+        └── 7. if text.is_empty():
+                 fallback_capture（再次 Ctrl+C + 轮询 10 次，间隔 30ms）
+                 emit("zenreply://clipboard-captured", { text })
+                 前端收到后：仅 setRawText(text)，不重置 UI
+```
 
-- 归档： 一个任务彻底测试通过后，由用户将该文档内容移动至 devlog/archive/ 文件夹下，以日期_序号命名（如0228_01.md），描述你干了什么，并清理MANIFEST.md中相应条目。一个问题单开一个文件，同一日期下文件命名方式按文件存在的顺序记录，如0228_01.md、0228_02.md等。
+> **关键约束**：enigo Ctrl+C 必须在 `window.show()` 之前执行。show_window 由前端在测量窗口尺寸后主动调用，而非 Rust 触发。
 
+### 5.2 Context 架构
 
-AI 并行开发规范 (Multi-Agent Protocol)
+`AppProvider` 组合三个 Context：
+- `ToastContext`：Toast 显示
+- `SettingsContext`：设置状态（`useSettings`）
+- `ZenReplyContext`：主流程状态（`useZenReplyFlow`）
 
-Step 1: 冲突检查 (Pre-flight Check)
-在执行任何修改前，必须读取 devlog/MANIFEST.md。
-检查 Active Tasks 中是否有任务锁定（Locks）了你计划修改的文件。
-如果有冲突，停止操作并告知用户：“文件 [文件名] 正被任务 [ID] 锁定，请等待或手动调整优先级。”
+`App.tsx` 只渲染 `AppProvider > AppInner`，`AppInner` 消费 Context，`AppShortcuts` 作为独立组件处理键盘事件。
 
-Step 2: 任务登记 (Registration)
-如果无冲突，在 Active Tasks 表格中新增一行，填写 ID、Scope 和你的 Owner 名称。
+### 5.3 Tauri 事件/命令清单
 
-Step 3: 创建日志 (Task Logging)
-在 devlog/ 下创建具体的任务文档（如 0228_01_Name.md），详细描述问题及方案。
+| 名称 | 方向 | 触发时机 |
+|---|---|---|
+| `zenreply://clipboard-text` | Rust -> React | 快捷键触发，携带捕获到的文本 |
+| `zenreply://clipboard-captured` | Rust -> React | 兜底捕获成功，仅补填文本 |
+| `zenreply://tray-wake` | Rust -> React | 托盘「打开主面板」点击 |
+| `zenreply://tray-open-settings` | Rust -> React | 托盘「打开设置」点击 |
+| `hide_window` | React -> Rust | 会话结束/Esc |
+| `show_window(w, h)` | React -> Rust | 内容测量完成后唤醒面板 |
+| `test_api_connection` | React -> Rust | 设置面板点击「测试连接」|
 
-Step 4: 完成与解锁 (Release)
-任务完成后：
-将详细任务文档移动至 devlog/archive/。
-在 MANIFEST.md 中将该任务状态改为 ✅ Done。
-清除该任务占用的 Scope Locks。
+---
+
+## 6. 多 AI 并行任务规范
+
+### 工作流
+
+- **任务启动**：修改任何代码前，先检查 `devlog/MANIFEST.md`。按当天日期+序号创建任务文档（如 `0301_01.md`），包含：问题现状、底层原因分析、预期改动点。
+
+- **登记**：在 `MANIFEST.md` 中新增行，状态设为 `Research`，标明 Scope（文件锁定范围）。
+
+- **方案确认**：等用户确认后，将状态改为 `In Progress` 再开始改代码。
+
+- **冲突检查**：改代码前检查所有 `In Progress` 任务的 Scope。若有文件冲突，设为 `Pending` 并告知用户。
+
+- **完成**：代码改完后，在任务文档中记录【实际改动记录】及【潜在风险】。用户审核后标记 Done，测试通过后归档至 `devlog/archive/`，清理 `MANIFEST.md`。
+
+---
 
 ## 7. 键盘操作速查
 
@@ -144,15 +199,10 @@ Step 4: 完成与解锁 (Release)
 
 | 现象 | 检查点 |
 |---|---|
-| 生成按钮无响应 | ① `hasBlockingError` 为 true → 等待 Toast 消隐；② `api_key` 为空 → 打开设置填写 |
+| 生成按钮无响应 | ① `hasBlockingError` 为 true -> 等待 Toast 消隐；② `api_key` 为空 -> 打开设置填写 |
 | 模型返回乱码/空 | ① `api_base` 与服务商不匹配；② `model_name` 拼写错误 |
 | 测试连接失败 | ① 网络连通性；② 401=Key 无效；③ 402=余额不足 |
 | 窗口尺寸异常 | ① `useAutoResizeWindow` 的 `panelRef` 是否正确绑定；② 内容 overflow |
-| Toast 消隐后按钮仍禁用 | `clearBlockingErrorRef` bridge 未正确连接 `useToast.onDismiss` → `clearError` |
-
----
-
-## 9. 结论
-
-项目核心功能闭环完整（唤醒 → 生成 → 复制 → 收口），UI 质量较高。**当前唯一阻塞项**是启动流程的两个 P0 Bug（双重动画 + 选区捕获失效），根因已明确，修复方案已设计完成（§5），需按 §6 的 Step 1-3 依次落地。
-
+| Toast 消隐后按钮仍禁用 | `clearBlockingErrorRef` bridge 未正确连接 `useToast.onDismiss` -> `clearError` |
+| 快捷键唤醒后文本为空 | ① 源应用不支持 Ctrl+C；② 兜底捕获可能需要 300ms，稍等后文本会自动填入 |
+| 窗口关闭后退出了 | `on_window_event CloseRequested` 未正确注册，或 prevent_close 未调用 |

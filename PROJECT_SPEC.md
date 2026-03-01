@@ -3,7 +3,7 @@
 项目技术规范（核心）
 
 状态：Active  
-更新时间：2026-02-27  
+更新时间：2026-03-01  
 适用范围：本仓库全部代码（`src/`、`src-tauri/`、配置文件、脚本、文档）  
 规范级别：`MUST`（强制） / `SHOULD`（建议） / `MAY`（可选）
 
@@ -44,20 +44,24 @@
 │                                                        │
 │  ┌─────────────── React App ────────────────────────┐  │
 │  │ App.tsx (组合根)                                  │  │
-│  │   ├── useToast          → ZenToast               │  │
-│  │   ├── useSettings       → SettingsPanel (背面)   │  │
-│  │   ├── useZenReplyFlow   → WorkArea (正面)        │  │
-│  │   ├── useGlobalShortcuts                         │  │
-│  │   ├── useAutoResizeWindow                        │  │
-│  │   └── FlipCard (3D 翻转容器)                     │  │
+│  │   └── AppProvider (Context 聚合)                 │  │
+│  │         ├── ToastContext     → ZenToast           │  │
+│  │         ├── SettingsContext  → SettingsPanel(背面)│  │
+│  │         └── ZenReplyContext  → WorkArea (正面)   │  │
+│  │                                                   │  │
+│  │   AppInner                                        │  │
+│  │     ├── AppShortcuts (键盘事件分发)               │  │
+│  │     ├── FlipCard (3D 翻转容器，仅 isAwake 时渲染) │  │
+│  │     └── ZenToast                                  │  │
 │  └──────────────────────────────────────────────────┘  │
 │                                                        │
 │  ┌─────────────── Rust Backend ─────────────────────┐  │
 │  │ lib.rs                                            │  │
-│  │   ├── on_shortcut_pressed  (全局快捷键 → 唤醒)   │  │
-│  │   ├── capture_selected_text (enigo Ctrl+C)        │  │
-│  │   ├── hide_window          (Tauri command)        │  │
-│  │   └── test_api_connection  (Tauri command)        │  │
+│  │   ├── on_shortcut_pressed  (异步线程，快捷键唤醒) │  │
+│  │   ├── quick_capture / fallback_capture            │  │
+│  │   ├── hide_window / show_window (Tauri commands)  │  │
+│  │   ├── test_api_connection   (Tauri command)       │  │
+│  │   └── TrayIconBuilder       (系统托盘)            │  │
 │  └──────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────┘
 ```
@@ -83,13 +87,16 @@ Rust → React 通过 Tauri `emit`，React → Rust 通过 `invoke`。
 
 | 事件名 | 方向 | 含义 |
 |---|---|---|
-| `zenreply://clipboard-text` | Rust → React | 唤醒面板，payload 含已捕获的文本（可能为空） |
-| `zenreply://clipboard-captured` | Rust → React | 异步兜底捕获到文本后补发（仅当快速路径为空时） |
+| `zenreply://clipboard-text` | Rust → React | 快捷键唤醒，payload 含已捕获文本（可能为空） |
+| `zenreply://clipboard-captured` | Rust → React | 兜底捕获成功后补发，仅补填文本不重置 UI |
+| `zenreply://tray-wake` | Rust → React | 托盘「打开主面板」点击 |
+| `zenreply://tray-open-settings` | Rust → React | 托盘「打开设置」点击 |
 
 | 命令名 | 方向 | 含义 |
 |---|---|---|
-| `hide_window` | React → Rust | 隐藏窗口 |
-| `test_api_connection` | React → Rust | 测试 API 连通性 |
+| `hide_window` | React → Rust | 隐藏窗口，同时更新托盘菜单 |
+| `show_window(w, h)` | React → Rust | resize+center+show+focus 合并调用，减少 IPC 往返 |
+| `test_api_connection` | React → Rust | 测试 API 连通性（Rust 侧绕过前端 CORS 限制）|
 
 ### 3.4 状态机
 
@@ -125,20 +132,25 @@ Rust → React 通过 Tauri `emit`，React → Rust 通过 `invoke`。
 
 ```
 Alt+Space Released
-  │
-  ├── 1. 读取剪贴板（记录 previous）
-  ├── 2. sleep 30ms（等待 OS 处理按键释放）
-  ├── 3. enigo Ctrl+C（模拟复制）
-  ├── 4. sleep 50ms（等待源应用处理复制）
+  |
+  +-- 独立线程（std::thread::spawn，不阻塞 Tauri 事件循环）
+        |
+        ├── 1. 读取剪贴板（记录 previous）
+        ├── 2. sleep 30ms（等待 OS 处理按键释放）
+        ├── 3. enigo Ctrl+C（模拟复制）
+        ├── 4. sleep 50ms（等待源应用处理复制）
   ├── 5. 读取剪贴板（对比 previous，得到 text）
-  │      总耗时 ~87ms（同步，阻塞但用户不可感知）
+  │      总耗时 ~87ms
   │
-  ├── 6. window.show() + set_focus()
-  ├── 7. emit("zenreply://clipboard-text", { text })
+  ├── 6. emit("zenreply://clipboard-text", { text })
+  │      前端收到后：onWake(text) → 状态重置 + 文本填入
+  │      前端在 useAutoResizeWindow 测量完成后调用 show_window
+  │      （不在 Rust 侧 show，避免透明壳闪烁）
   │
-  └── 8. if text.is_empty():
-           thread::spawn → 轮询剪贴板（兜底慢速应用）
+  └── 7. if text.is_empty():
+           fallback_capture（再次 Ctrl+C + 轮询 10×30ms）
            成功后 emit("zenreply://clipboard-captured", { text })
+           前端收到后：仅 setRawText(text)，不重置 UI
 ```
 
 ### 4.3 前端唤醒规范
