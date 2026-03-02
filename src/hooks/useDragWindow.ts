@@ -35,6 +35,7 @@ export function useDragWindow() {
     if (isInteractive(target)) return;
 
     e.preventDefault();
+    (document.activeElement as HTMLElement)?.blur();
     getCurrentWindow().startDragging();
   }, []);
 

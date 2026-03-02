@@ -11,3 +11,4 @@
 | 0228_09 | Done | `src-tauri/src/lib.rs`, `src-tauri/capabilities/default.json`, `src/hooks/useAutoResizeWindow.ts`, `src/components/layout/FlipCard.tsx`, `src/index.css`, `src/shared/motion.ts` | AI_Omega |
 | 0228_10 | Done | `src/components/layout/FlipCard.tsx`, `src/components/shared/GlassCard.tsx`, `src/shared/tokens.ts` | AI_Omega |
 | 0301_01 | Done | `src/components/zenreply/RoleComposer.tsx` | AI_Alpha |
+| 0302_01 | Done | `src/hooks/useDragWindow.ts` | AI_Alpha |
