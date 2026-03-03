@@ -2,7 +2,7 @@ export type Stage = "INPUT" | "GENERATING" | "FINISHED";
 
 export type Mode = "reply" | "translate";
 
-export type PresetTargetRole = "boss" | "client" | "greenTea";
+export type PresetTargetRole = "boss" | "client" | "lover";
 export type TargetRole = PresetTargetRole | "custom";
 
 export type RoleOption = {

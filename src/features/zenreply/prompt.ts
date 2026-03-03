@@ -10,13 +10,13 @@ type BuildPromptParams = {
 const PRESET_ROLE_LABEL: Record<Exclude<TargetRole, "custom">, string> = {
   boss: "老板",
   client: "甲方",
-  greenTea: "绿茶",
+  lover: "恋爱对象",
 };
 
 const PRESET_ROLE_STRATEGY: Record<Exclude<TargetRole, "custom">, string> = {
   boss: "对方偏上位：保持恭敬但有底线，先承接，再给方案和时间点（太极拳风格）。",
   client: "对方偏业务合作方：保持体面与专业，强调协同、风险和交付承诺（软钉子风格）。",
-  greenTea: "对方偏关系敏感场景：高情商但边界清晰，避免暧昧和失控情绪。",
+  lover: "对方是亲密关系：传递温度与情绪价值，同时保持自我边界，避免控制感、说教或过度退让，让对方感受到被看见而非被管理。",
 };
 
 const AUTHORITY_RE = /(老板|领导|主管|总监|经理|甲方|客户|导师|老师|hr|面试官)/i;
