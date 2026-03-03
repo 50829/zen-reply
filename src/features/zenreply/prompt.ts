@@ -1,4 +1,4 @@
-import type { TargetRole } from "./types";
+import type { TargetRole, TranslateStyle } from "./types";
 
 type BuildPromptParams = {
   rawText: string;
@@ -90,3 +90,57 @@ export function buildPrompt({
   ].join("\n");
 }
 
+// ── Translate to English ──────────────────────────────────────────────────
+
+type BuildTranslatePromptParams = {
+  rawText: string;
+  translateStyle: TranslateStyle;
+};
+
+const TRANSLATE_STYLE_INSTRUCTION: Record<TranslateStyle, string> = {
+  formal: [
+    "Register: formal written English, suitable for academic, legal, or official business contexts.",
+    "Tone: objective, precise, and authoritative. Avoid contractions and colloquialisms.",
+    "Vocabulary: prefer Latinate/formal vocabulary over everyday alternatives.",
+  ].join(" "),
+  casual: [
+    "Register: natural conversational English, suitable for everyday communication.",
+    "Tone: friendly, relaxed, and approachable. Contractions and phrasal verbs are encouraged.",
+    "Vocabulary: plain, everyday words — keep it sounding like a real person talking.",
+  ].join(" "),
+  email: [
+    "Register: professional email English, warm yet business-appropriate.",
+    "Tone: polite, clear, and action-oriented. Use courteous openers/closers where natural.",
+    "Structure: coherent flow, clear purpose — ready to copy directly into an email client.",
+  ].join(" "),
+  concise: [
+    "Register: crisp, minimal English — cut every superfluous word.",
+    "Tone: direct and confident. No filler phrases, no redundant context.",
+    "Target length: as short as possible while preserving the full meaning.",
+  ].join(" "),
+};
+
+export function buildTranslatePrompt({
+  rawText,
+  translateStyle,
+}: BuildTranslatePromptParams): string {
+  const safeRaw = rawText.trim() || "（无输入内容）";
+  const styleInstruction = TRANSLATE_STYLE_INSTRUCTION[translateStyle];
+
+  return [
+    "You are an expert Chinese-to-English translator with deep knowledge of both languages and cultural nuances.",
+    "",
+    `Style requirements: ${styleInstruction}`,
+    "",
+    "The Chinese text to translate is:",
+    `"${safeRaw}"`,
+    "",
+    "Translation requirements:",
+    "1) Preserve the complete meaning and intent of the original text.",
+    "2) Adapt cultural expressions naturally — do not translate idioms word-for-word.",
+    "3) Apply the specified style consistently throughout the translation.",
+    "4) Output the translation only — no explanations, no labels, no quotation marks, no extra line breaks.",
+    "",
+    "Output the final English translation directly.",
+  ].join("\n");
+}

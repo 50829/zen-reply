@@ -4,12 +4,14 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { hasApiKey, type AppSettings } from "../features/settings/store";
-import { buildPrompt } from "../features/zenreply/prompt";
-import { ROLE_OPTIONS } from "../shared/constants";
+import { buildPrompt, buildTranslatePrompt } from "../features/zenreply/prompt";
+import { ROLE_OPTIONS, STYLE_OPTIONS } from "../shared/constants";
 import type {
+  Mode,
   PresetTargetRole,
   Stage,
   TargetRole,
+  TranslateStyle,
 } from "../features/zenreply/types";
 import { useLlmStream, type LlmApiConfig } from "./useLlmStream";
 import type { ToastVariant } from "./useToast";
@@ -35,9 +37,11 @@ type SettingsDeps = {
 
 export function useZenReplyFlow(settings: SettingsDeps) {
   const [stage, setStage] = useState<Stage>("INPUT");
+  const [mode, setMode] = useState<Mode>("reply");
   const [rawText, setRawText] = useState("");
   const [contextText, setContextText] = useState("");
   const [targetRole, setTargetRole] = useState<TargetRole>("boss");
+  const [translateStyle, setTranslateStyle] = useState<TranslateStyle>("formal");
   const [customRoleName, setCustomRoleName] = useState("");
   const [customRoleDraft, setCustomRoleDraft] = useState("");
   const [isCustomRoleEditing, setIsCustomRoleEditing] = useState(false);
@@ -88,7 +92,9 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     clearError();
     setRawText("");
     setContextText("");
+    setMode("reply");
     setTargetRole("boss");
+    setTranslateStyle("formal");
     setCustomRoleName("");
     setCustomRoleDraft("");
     setIsCustomRoleEditing(false);
@@ -134,6 +140,7 @@ export function useZenReplyFlow(settings: SettingsDeps) {
       clearError();
       setRawText(incomingText.trim());
       setContextText("");
+      setTranslateStyle("formal");
       setCustomRoleDraft("");
       setIsCustomRoleEditing(false);
       setStage("INPUT");
@@ -149,12 +156,6 @@ export function useZenReplyFlow(settings: SettingsDeps) {
         if (!rawText.trim()) {
           setStage("INPUT");
           showError(EMPTY_TEXT_ERROR);
-          return;
-        }
-
-        const customRoleFinal = (customRoleOverride ?? customRoleName).trim();
-        if (targetRole === "custom" && !customRoleFinal) {
-          settings.showToast("请先输入自定义对象身份", "info");
           return;
         }
 
@@ -178,12 +179,23 @@ export function useZenReplyFlow(settings: SettingsDeps) {
           modelName: currentSettings.model_name,
         };
 
-        const prompt = buildPrompt({
-          rawText,
-          targetRole,
-          contextText,
-          customRoleInput: customRoleFinal,
-        });
+        let prompt: string;
+
+        if (mode === "translate") {
+          prompt = buildTranslatePrompt({ rawText, translateStyle });
+        } else {
+          const customRoleFinal = (customRoleOverride ?? customRoleName).trim();
+          if (targetRole === "custom" && !customRoleFinal) {
+            settings.showToast("请先输入自定义对象身份", "info");
+            return;
+          }
+          prompt = buildPrompt({
+            rawText,
+            targetRole,
+            contextText,
+            customRoleInput: customRoleFinal,
+          });
+        }
 
         clearError();
         settings.setIsSettingsOpen(false);
@@ -208,11 +220,13 @@ export function useZenReplyFlow(settings: SettingsDeps) {
       clearError,
       contextText,
       customRoleName,
+      mode,
       rawText,
       settings,
       showError,
       startStream,
       targetRole,
+      translateStyle,
     ],
   );
 
@@ -297,6 +311,20 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     [selectPresetRole],
   );
 
+  const selectTranslateStyle = useCallback((style: TranslateStyle) => {
+    setTranslateStyle(style);
+  }, []);
+
+  const selectStyleByHotkey = useCallback(
+    (hotkey: 1 | 2 | 3 | 4) => {
+      const style = STYLE_OPTIONS.find((item) => item.hotkey === hotkey);
+      if (style) {
+        setTranslateStyle(style.id);
+      }
+    },
+    [],
+  );
+
   // ── Clipboard listeners ──
   useEffect(() => {
     let unlistenWake: (() => void) | null = null;
@@ -368,12 +396,19 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     showError(streamError);
   }, [showError, streamError]);
 
+  const styleMeta = useMemo(
+    () => STYLE_OPTIONS.find((s) => s.id === translateStyle),
+    [translateStyle],
+  );
+
   return {
     // State
     stage,
+    mode,
     rawText,
     contextText,
     targetRole,
+    translateStyle,
     customRoleName,
     customRoleDraft,
     isCustomRoleEditing,
@@ -383,9 +418,11 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     streamedText,
     isStreaming,
     roleMeta,
+    styleMeta,
 
     // Setters
     setRawText,
+    setMode,
     setCustomRoleDraft,
     setContextText,
     clearError,
@@ -399,6 +436,8 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     confirmAndCopy,
     selectPresetRole,
     selectRoleByHotkey,
+    selectTranslateStyle,
+    selectStyleByHotkey,
     terminateSession,
   };
 }

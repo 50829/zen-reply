@@ -11,10 +11,12 @@ import { CUSTOM_ROLE_HOTKEY } from "./shared/constants";
 export function AppShortcuts() {
   const {
     stage,
+    mode,
     hasBlockingError,
     startGenerating,
     startCustomRoleEditing,
     selectRoleByHotkey,
+    selectStyleByHotkey,
     confirmAndCopy,
     terminateSession,
   } = useZenReplyContext();
@@ -36,6 +38,7 @@ export function AppShortcuts() {
   useGlobalShortcuts({
     isSettingsOpen,
     stage,
+    mode,
     hasBlockingError,
     customRoleHotkey: CUSTOM_ROLE_HOTKEY,
     isSettingsBusy,
@@ -43,6 +46,7 @@ export function AppShortcuts() {
     onCloseSettings: closeSettings,
     onTerminateSession: handleTerminateSession,
     onSelectRoleHotkey: selectRoleByHotkey,
+    onSelectStyleHotkey: selectStyleByHotkey,
     onStartCustomRoleEditing: startCustomRoleEditing,
     onStartGenerating: handleStartGenerating,
     onConfirmAndCopy: handleConfirmAndCopy,

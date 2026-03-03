@@ -2,16 +2,25 @@ import { useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ResultCard } from "./ResultCard";
 import { RoleComposer } from "./RoleComposer";
+import { StyleComposer } from "./StyleComposer";
 import { SourceTextCard } from "./SourceTextCard";
 import { GlassCard } from "../shared/GlassCard";
 import { useZenReplyContext } from "../../contexts/ZenReplyContext";
 import { useSettingsContext } from "../../contexts/SettingsContext";
 import { SECTION_TRANSITION } from "../../shared/motion";
 import { SPRING_BUTTON } from "../../shared/motion";
+import type { Mode } from "../../features/zenreply/types";
+
+const MODE_TABS: { id: Mode; label: string }[] = [
+  { id: "reply",     label: "💬 回复" },
+  { id: "translate", label: "🌐 英文" },
+];
 
 export function WorkArea() {
   const {
     stage,
+    mode,
+    setMode,
     startGenerating,
     terminateSession,
     confirmAndCopy,
@@ -56,6 +65,26 @@ export function WorkArea() {
         </motion.button>
       </header>
 
+      {/* Mode Tabs */}
+      <div className="mb-3 flex gap-1 rounded-xl border border-white/10 bg-white/3 p-1">
+        {MODE_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setMode(tab.id)}
+            className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition active:scale-[0.97] ${
+              mode === tab.id
+                ? tab.id === "translate"
+                  ? "bg-violet-300/20 text-violet-100 border border-violet-300/40"
+                  : "bg-cyan-300/20 text-cyan-100 border border-cyan-300/40"
+                : "text-zinc-400 hover:text-zinc-200 border border-transparent"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1">
         <SourceTextCard />
 
@@ -68,9 +97,11 @@ export function WorkArea() {
               transition={SECTION_TRANSITION}
               className="overflow-hidden"
             >
-              <RoleComposer
-                onGenerate={handleGenerate}
-              />
+              {mode === "translate" ? (
+                <StyleComposer onGenerate={handleGenerate} />
+              ) : (
+                <RoleComposer onGenerate={handleGenerate} />
+              )}
             </motion.section>
           ) : null}
         </AnimatePresence>

@@ -1,9 +1,10 @@
 import { useEffect } from "react";
-import type { Stage } from "../features/zenreply/types";
+import type { Mode, Stage } from "../features/zenreply/types";
 
 type UseGlobalShortcutsOptions = {
   isSettingsOpen: boolean;
   stage: Stage;
+  mode: Mode;
   hasBlockingError: boolean;
   customRoleHotkey: number;
   isSettingsBusy: boolean;
@@ -11,6 +12,7 @@ type UseGlobalShortcutsOptions = {
   onCloseSettings: () => void;
   onTerminateSession: () => void | Promise<void>;
   onSelectRoleHotkey: (hotkey: 1 | 2 | 3) => void;
+  onSelectStyleHotkey: (hotkey: 1 | 2 | 3 | 4) => void;
   onStartCustomRoleEditing: () => void;
   onStartGenerating: () => void | Promise<void>;
   onConfirmAndCopy: () => void | Promise<void>;
@@ -21,6 +23,7 @@ export function useGlobalShortcuts(options: UseGlobalShortcutsOptions) {
   const {
     isSettingsOpen,
     stage,
+    mode,
     hasBlockingError,
     customRoleHotkey,
     isSettingsBusy,
@@ -28,6 +31,7 @@ export function useGlobalShortcuts(options: UseGlobalShortcutsOptions) {
     onCloseSettings,
     onTerminateSession,
     onSelectRoleHotkey,
+    onSelectStyleHotkey,
     onStartCustomRoleEditing,
     onStartGenerating,
     onConfirmAndCopy,
@@ -72,15 +76,22 @@ export function useGlobalShortcuts(options: UseGlobalShortcutsOptions) {
       }
 
       if (!isTyping && stage === "INPUT") {
-        if (event.key >= "1" && event.key <= "3") {
-          onSelectRoleHotkey(Number(event.key) as 1 | 2 | 3);
-          return;
-        }
+        if (mode === "translate") {
+          if (event.key >= "1" && event.key <= "4") {
+            onSelectStyleHotkey(Number(event.key) as 1 | 2 | 3 | 4);
+            return;
+          }
+        } else {
+          if (event.key >= "1" && event.key <= "3") {
+            onSelectRoleHotkey(Number(event.key) as 1 | 2 | 3);
+            return;
+          }
 
-        if (event.key === String(customRoleHotkey)) {
-          event.preventDefault();
-          onStartCustomRoleEditing();
-          return;
+          if (event.key === String(customRoleHotkey)) {
+            event.preventDefault();
+            onStartCustomRoleEditing();
+            return;
+          }
         }
       }
 
@@ -109,11 +120,13 @@ export function useGlobalShortcuts(options: UseGlobalShortcutsOptions) {
     hasBlockingError,
     isSettingsBusy,
     isSettingsOpen,
+    mode,
     onCloseSettings,
     onConfirmAndCopy,
     onOpenSettings,
     onSaveSettings,
     onSelectRoleHotkey,
+    onSelectStyleHotkey,
     onStartCustomRoleEditing,
     onStartGenerating,
     onTerminateSession,
