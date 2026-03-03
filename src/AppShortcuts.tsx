@@ -12,6 +12,7 @@ export function AppShortcuts() {
   const {
     stage,
     mode,
+    setMode,
     hasBlockingError,
     startGenerating,
     startCustomRoleEditing,
@@ -34,6 +35,7 @@ export function AppShortcuts() {
   const handleTerminateSession = useCallback(() => { void terminateSession(); }, [terminateSession]);
   const handleConfirmAndCopy = useCallback(() => { void confirmAndCopy(); }, [confirmAndCopy]);
   const handleSaveSettings = useCallback(() => { void saveSettings(); }, [saveSettings]);
+  const handleSwitchMode = useCallback((m: import("./features/zenreply/types").Mode) => { setMode(m); }, [setMode]);
 
   useGlobalShortcuts({
     isSettingsOpen,
@@ -47,6 +49,7 @@ export function AppShortcuts() {
     onTerminateSession: handleTerminateSession,
     onSelectRoleHotkey: selectRoleByHotkey,
     onSelectStyleHotkey: selectStyleByHotkey,
+    onSwitchMode: handleSwitchMode,
     onStartCustomRoleEditing: startCustomRoleEditing,
     onStartGenerating: handleStartGenerating,
     onConfirmAndCopy: handleConfirmAndCopy,

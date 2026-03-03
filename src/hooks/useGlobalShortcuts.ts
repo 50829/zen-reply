@@ -13,6 +13,7 @@ type UseGlobalShortcutsOptions = {
   onTerminateSession: () => void | Promise<void>;
   onSelectRoleHotkey: (hotkey: 1 | 2 | 3) => void;
   onSelectStyleHotkey: (hotkey: 1 | 2 | 3 | 4) => void;
+  onSwitchMode: (mode: Mode) => void;
   onStartCustomRoleEditing: () => void;
   onStartGenerating: () => void | Promise<void>;
   onConfirmAndCopy: () => void | Promise<void>;
@@ -32,6 +33,7 @@ export function useGlobalShortcuts(options: UseGlobalShortcutsOptions) {
     onTerminateSession,
     onSelectRoleHotkey,
     onSelectStyleHotkey,
+    onSwitchMode,
     onStartCustomRoleEditing,
     onStartGenerating,
     onConfirmAndCopy,
@@ -69,6 +71,20 @@ export function useGlobalShortcuts(options: UseGlobalShortcutsOptions) {
         }
         void onTerminateSession();
         return;
+      }
+
+      // Alt+1 / Alt+2 — switch mode from anywhere (not typing, not settings)
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !isTyping && !isSettingsOpen) {
+        if (event.key === "1") {
+          event.preventDefault();
+          onSwitchMode("reply");
+          return;
+        }
+        if (event.key === "2") {
+          event.preventDefault();
+          onSwitchMode("translate");
+          return;
+        }
       }
 
       if (isSettingsOpen) {
@@ -127,6 +143,7 @@ export function useGlobalShortcuts(options: UseGlobalShortcutsOptions) {
     onSaveSettings,
     onSelectRoleHotkey,
     onSelectStyleHotkey,
+    onSwitchMode,
     onStartCustomRoleEditing,
     onStartGenerating,
     onTerminateSession,

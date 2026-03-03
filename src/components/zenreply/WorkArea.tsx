@@ -67,10 +67,11 @@ export function WorkArea() {
 
       {/* Mode Tabs */}
       <div className="mb-3 flex gap-1 rounded-xl border border-white/10 bg-white/3 p-1">
-        {MODE_TABS.map((tab) => (
+        {MODE_TABS.map((tab, i) => (
           <button
             key={tab.id}
             type="button"
+            title={`Alt+${i + 1}`}
             onClick={() => setMode(tab.id)}
             className={`flex-1 rounded-lg py-1.5 text-xs font-medium transition active:scale-[0.97] ${
               mode === tab.id
@@ -97,11 +98,29 @@ export function WorkArea() {
               transition={SECTION_TRANSITION}
               className="overflow-hidden"
             >
-              {mode === "translate" ? (
-                <StyleComposer onGenerate={handleGenerate} />
-              ) : (
-                <RoleComposer onGenerate={handleGenerate} />
-              )}
+              <AnimatePresence mode="wait" initial={false}>
+                {mode === "translate" ? (
+                  <motion.div
+                    key="translate"
+                    initial={{ opacity: 0, x: 18 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 18 }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                  >
+                    <StyleComposer onGenerate={handleGenerate} />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="reply"
+                    initial={{ opacity: 0, x: -18 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -18 }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                  >
+                    <RoleComposer onGenerate={handleGenerate} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.section>
           ) : null}
         </AnimatePresence>
