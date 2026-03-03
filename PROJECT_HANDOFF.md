@@ -31,7 +31,7 @@
 | 图标 | **Lucide React** | 清除按钮等 UI 图标 |
 | 模型 | **前端直连** OpenAI 兼容 chat/completions (SSE) | `useLlmStream.ts` 负责 |
 | 键模拟 | **enigo 0.2** | 模拟 Ctrl+C 捕获选区 |
-| 包管理 | **Bun** (JS) / **Cargo** (Rust) | |
+| 包管理 | **pnpm** (JS) / **Cargo** (Rust) | |
 
 ---
 

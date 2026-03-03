@@ -22,15 +22,15 @@
 | 层 | 技术 | 版本要求 |
 |---|---|---|
 | 桌面壳 | Tauri v2 + Rust | Rust stable (edition 2021) |
-| 前端 | React 19 + TypeScript + Vite | Node.js 18+, Bun 1.x |
+| 前端 | React 19 + TypeScript + Vite | Node.js 22+, pnpm 10+ |
 | 样式 | Tailwind CSS v4 | |
 | 动画 | Framer Motion | |
 | 图标 | Lucide React | |
 | 键模拟 | enigo 0.2 | |
 | HTTP | 前端 fetch (SSE) / Rust reqwest (测试连接) | |
 
-- `MUST` 使用 Bun 作为 JS 依赖安装与脚本执行工具。
-- `MUST` 锁定依赖：前端依赖通过 `bun.lock`，Rust 依赖通过 `Cargo.lock`。
+- `MUST` 使用 pnpm 作为 JS 依赖安装与脚本执行工具。
+- `MUST` 锁定依赖：前端依赖通过 `pnpm-lock.yaml`，Rust 依赖通过 `Cargo.lock`。
 
 ---
 
@@ -239,7 +239,7 @@ Alt+Space Released
 - `MUST` 合并前至少通过：
   - TypeScript 类型检查（`tsc --noEmit`）
   - Rust 编译检查（`cargo check`）
-  - 构建（`bun run build` + `cargo build`）
+  - 构建（`pnpm build` + `cargo build`）
 - `SHOULD` 在 CI 中串联上述门禁。
 - `SHOULD` 增加格式化检查和 lint。
 

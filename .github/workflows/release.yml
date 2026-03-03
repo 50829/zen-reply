@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"    # e.g. v0.2.0
+      - "v[0-9]+.[0-9]+.[0-9]+-*"  # e.g. v0.2.0-beta.1
+
+permissions:
+  contents: write  # 写入 GitHub Release
+
+jobs:
+  publish-tauri:
+    name: Build & Release (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Windows ───────────────────────────────────────────────────────
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+
+          # ── macOS ARM (Apple Silicon) ─────────────────────────────────────
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            bundles: dmg,app
+
+          # ── macOS Intel ───────────────────────────────────────────────────
+          - platform: macos-13
+            target: x86_64-apple-darwin
+            bundles: dmg,app
+
+          # ── Linux ─────────────────────────────────────────────────────────
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── pnpm + Node ──────────────────────────────────────────────────────
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # ── Linux 系统依赖 ────────────────────────────────────────────────────
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # ── Rust 工具链 ────────────────────────────────────────────────────────
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      # ── 安装 JS 依赖 ──────────────────────────────────────────────────────
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── Tauri 跨平台构建 + 发布 Release ──────────────────────────────────
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ── 可选：Tauri Updater 签名（在 Repo Secrets 中配置）────────────
+          # TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          # TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "ZenReply v__VERSION__"
+          releaseBody: |
+            ## 更新内容
+
+            查看 [CHANGELOG](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) 了解详细变更。
+
+            ## 安装包
+
+            | 平台 | 文件 |
+            |------|------|
+            | Windows | `.msi` / `.exe` (NSIS) |
+            | macOS | `.dmg` |
+            | Linux | `.deb` / `.AppImage` |
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}

@@ -15,6 +15,10 @@ dist-ssr
 .env.*
 !.env.example
 
+# Bun（已迁移到 pnpm，lock 文件不再需要）
+bun.lock
+bunfig.toml
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
