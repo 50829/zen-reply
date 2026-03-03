@@ -12,8 +12,8 @@ import { SPRING_BUTTON } from "../../shared/motion";
 import type { Mode } from "../../features/zenreply/types";
 
 const MODE_TABS: { id: Mode; label: string }[] = [
-  { id: "reply",     label: "💬 回复" },
-  { id: "translate", label: "🌐 英文" },
+  { id: "reply",     label: "💬 回复（Alt+1）" },
+  { id: "translate", label: "🌐 英文（Alt+2）" },
 ];
 
 export function WorkArea() {

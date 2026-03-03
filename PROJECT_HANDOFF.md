@@ -125,17 +125,13 @@ Alt+Space Released
         ├── 1. 读取剪贴板（记录 previous）
         ├── 2. sleep 30ms（等待 OS 处理按键释放）
         ├── 3. enigo Ctrl+C（模拟复制）
-        ├── 4. sleep 50ms（等待源应用处理复制）
-        ├── 5. 读取剪贴板 -> 对比 previous，得到 text（约 87ms）
+        ├── 4. sleep 100ms（等待源应用处理复制）
+        ├── 5. 读取剪贴板 -> 对比 previous，得到 text（约 137ms）
         |
         ├── 6. emit("zenreply://clipboard-text", { text })
         |      前端收到后：onWake(text) -> 状态重置 + 文本填入
         |      前端在 useAutoResizeWindow 测量完成后调用 show_window
-        |
-        └── 7. if text.is_empty():
-                 fallback_capture（再次 Ctrl+C + 轮询 10 次，间隔 30ms）
-                 emit("zenreply://clipboard-captured", { text })
-                 前端收到后：仅 setRawText(text)，不重置 UI
+
 ```
 
 > **关键约束**：enigo Ctrl+C 必须在 `window.show()` 之前执行。show_window 由前端在测量窗口尺寸后主动调用，而非 Rust 触发。

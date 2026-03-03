@@ -13,7 +13,6 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const ACTIVATION_SHORTCUT: &str = "Alt+Space";
 const CLIPBOARD_EVENT: &str = "zenreply://clipboard-text";
-const CLIPBOARD_CAPTURED_EVENT: &str = "zenreply://clipboard-captured";
 const TRAY_WAKE_EVENT: &str = "zenreply://tray-wake";
 const TRAY_OPEN_SETTINGS_EVENT: &str = "zenreply://tray-open-settings";
 const DEFAULT_API_BASE: &str = "https://api.siliconflow.cn/v1";
@@ -174,8 +173,8 @@ fn trigger_copy_shortcut() {
     }
 }
 
-/// Fast synchronous capture: ~87ms. Returns captured text or empty string.
-fn quick_capture<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> (String, String) {
+/// Fast synchronous capture: ~117ms. Returns captured text or empty string.
+fn quick_capture<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> String {
     let previous = app.clipboard().read_text().unwrap_or_default();
 
     // Brief pause for OS to finish processing the Alt+Space key release.
@@ -183,30 +182,16 @@ fn quick_capture<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> (String, Strin
     trigger_copy_shortcut();
 
     // Wait for the source app to update the clipboard.
-    thread::sleep(Duration::from_millis(50));
+    thread::sleep(Duration::from_millis(100));
 
     let current = app.clipboard().read_text().unwrap_or_default();
     if !current.is_empty() && current != previous {
-        return (current, previous);
+        return current;
     }
 
-    (String::new(), previous)
-}
-
-/// Fallback polling for apps that update the clipboard slowly (e.g. Electron).
-fn fallback_capture<R: tauri::Runtime>(app: &tauri::AppHandle<R>, previous: &str) -> String {
-    // Second Ctrl+C attempt, then poll.
-    trigger_copy_shortcut();
-    for _ in 0..10 {
-        thread::sleep(Duration::from_millis(30));
-        if let Ok(text) = app.clipboard().read_text() {
-            if !text.is_empty() && text != previous {
-                return text;
-            }
-        }
-    }
     String::new()
 }
+
 
 fn on_shortcut_pressed<R: tauri::Runtime>(app: &tauri::AppHandle<R>)
 where
@@ -220,26 +205,13 @@ where
     let handle = app.clone();
     std::thread::spawn(move || {
         // Capture BEFORE showing the window — enigo Ctrl+C needs the source app focused.
-        let (text, previous) = quick_capture(&handle);
+        let text = quick_capture(&handle);
 
         if let Some(window) = handle.get_webview_window("main") {
             // Do NOT show/focus here — let JS side show the window AFTER
             // it has measured + resized the content, preventing the
             // transparent-shell flash and first-launch blank panel.
             let _ = window.emit(CLIPBOARD_EVENT, ClipboardPayload { text: text.clone() });
-        }
-
-        // Async fallback: only when the fast path returned nothing.
-        if text.is_empty() {
-            let captured = fallback_capture(&handle, &previous);
-            if !captured.is_empty() {
-                if let Some(window) = handle.get_webview_window("main") {
-                    let _ = window.emit(
-                        CLIPBOARD_CAPTURED_EVENT,
-                        ClipboardPayload { text: captured },
-                    );
-                }
-            }
         }
     });
 }

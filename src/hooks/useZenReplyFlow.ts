@@ -18,7 +18,6 @@ import type { ToastVariant } from "./useToast";
 import { toErrorMessage } from "../shared/utils";
 
 const CLIPBOARD_EVENT = "zenreply://clipboard-text";
-const CLIPBOARD_CAPTURED_EVENT = "zenreply://clipboard-captured";
 const TRAY_WAKE_EVENT = "zenreply://tray-wake";
 const TRAY_OPEN_SETTINGS_EVENT = "zenreply://tray-open-settings";
 const MISSING_API_KEY_ERROR = "请先设置 API Key";
@@ -328,23 +327,17 @@ export function useZenReplyFlow(settings: SettingsDeps) {
   // ── Clipboard listeners ──
   useEffect(() => {
     let unlistenWake: (() => void) | null = null;
-    let unlistenCapture: (() => void) | null = null;
     let unlistenTrayWake: (() => void) | null = null;
     let unlistenTraySettings: (() => void) | null = null;
     let active = true;
 
     const setupListeners = async () => {
       try {
-        const [wakeCleanup, captureCleanup, trayWakeCleanup, traySettingsCleanup] =
+        const [wakeCleanup, trayWakeCleanup, traySettingsCleanup] =
           await Promise.all([
             // Primary wake event — window just became visible, reset UI
             listen<ClipboardPayload>(CLIPBOARD_EVENT, (event) => {
               onWake(event.payload.text || "");
-            }),
-            // Async clipboard delivery — arrives after background capture completes
-            listen<ClipboardPayload>(CLIPBOARD_CAPTURED_EVENT, (event) => {
-              const text = (event.payload.text || "").trim();
-              if (text) setRawText(text);
             }),
             // Tray icon: open main panel with empty text
             listen(TRAY_WAKE_EVENT, () => {
@@ -359,14 +352,12 @@ export function useZenReplyFlow(settings: SettingsDeps) {
 
         if (!active) {
           wakeCleanup();
-          captureCleanup();
           trayWakeCleanup();
           traySettingsCleanup();
           return;
         }
 
         unlistenWake = wakeCleanup;
-        unlistenCapture = captureCleanup;
         unlistenTrayWake = trayWakeCleanup;
         unlistenTraySettings = traySettingsCleanup;
       } catch (err) {
@@ -379,7 +370,6 @@ export function useZenReplyFlow(settings: SettingsDeps) {
     return () => {
       active = false;
       unlistenWake?.();
-      unlistenCapture?.();
       unlistenTrayWake?.();
       unlistenTraySettings?.();
       clearHideTimer();
