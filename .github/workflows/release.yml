@@ -11,32 +11,36 @@ permissions:
 
 jobs:
   publish-tauri:
-    name: Build & Release (${{ matrix.platform }})
+    name: Build & Release (${{ matrix.label }})
     strategy:
       fail-fast: false
       matrix:
         include:
           # ── Windows ───────────────────────────────────────────────────────
-          - platform: windows-latest
+          - label: windows-x64
+            runner: windows-latest
             target: x86_64-pc-windows-msvc
             bundles: nsis,msi
 
           # ── macOS ARM (Apple Silicon) ─────────────────────────────────────
-          - platform: macos-latest
+          - label: macos-arm64
+            runner: macos-latest
             target: aarch64-apple-darwin
             bundles: dmg,app
 
-          # ── macOS Intel ───────────────────────────────────────────────────
-          - platform: macos-13
+          # ── macOS Intel（从 ARM runner 交叉编译，macos-13 已废弃）──────────
+          - label: macos-x64
+            runner: macos-latest
             target: x86_64-apple-darwin
             bundles: dmg,app
 
           # ── Linux ─────────────────────────────────────────────────────────
-          - platform: ubuntu-22.04
+          - label: linux-x64
+            runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             bundles: deb,appimage
 
-    runs-on: ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +57,7 @@ jobs:
 
       # ── Linux 系统依赖 ────────────────────────────────────────────────────
       - name: Install Linux system dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.label == 'linux-x64'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
