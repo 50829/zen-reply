@@ -2,7 +2,7 @@
 
 > **把你想说的话，变成你该说的话。**
 
-[![Release](https://img.shields.io/github/v/release/mirawind/zenreply?style=flat-square)](https://github.com/mirawind/zenreply/releases/latest)
+[![Release](https://img.shields.io/github/v/release/mirawind/zenreply?style=flat-square)](https://github.com/50829/zen-reply/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square)](#下载安装)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
