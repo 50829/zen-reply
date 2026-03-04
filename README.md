@@ -2,7 +2,6 @@
 
 > **把你想说的话，变成你该说的话。**
 
-[![Release](https://img.shields.io/github/v/release/mirawind/zenreply?style=flat-square)](https://github.com/50829/zen-reply/releases/latest)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square)](#下载安装)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
@@ -26,7 +25,7 @@ ZenReply 是一款运行在桌面端的 **AI 沟通辅助工具**，基于 Tauri
 
 ### ⚡ 一键唤醒，零打断
 
-在任意应用（微信、飞书、钉钉、浏览器…）中选中文字，按 `Alt+Space`，ZenReply 自动捕获文本并弹出面板。无需复制、无需切换窗口。
+在任意应用（微信、飞书、钉钉、浏览器…）中选中文字，按 `Alt+Space`，ZenReply 自动捕获文本并弹出面板。无需复制、无需切换窗口。按`esc`自动最小化至托盘，可重复调用
 
 ### 🎭 角色化策略润色
 
@@ -39,7 +38,7 @@ ZenReply 是一款运行在桌面端的 **AI 沟通辅助工具**，基于 Tauri
 | 💌 **恋爱对象** | 传递温度与情绪价值，保持自我边界，避免控制感与说教 |
 | ✏️ **自定义** | 输入任意身份，自动推断上位/亲密/平级关系套用策略 |
 
-使用数字快捷键选定沟通对象后，可输入对方刚才说的话作为背景上下文，也可以不输入，随后点击`Enter`键「生成回复」，AI 流式生成结果，确认后按`Enter`一键写入剪贴板，面板自动关闭，`Ctrl+V`直接粘贴发送：
+使用数字快捷键选定对象后，可选择性输入对方刚才说的话作为背景上下文。点击`Enter`生成回复，AI 流式生成结果，确认后按`Enter`一键写入剪贴板，面板自动关闭，`Ctrl+V`直接粘贴发送：
 
 | 输入面板 | 生成结果 |
 |---|---|
@@ -67,7 +66,7 @@ ZenReply 是一款运行在桌面端的 **AI 沟通辅助工具**，基于 Tauri
 
 ## 下载安装
 
-前往 [Releases 页面](https://github.com/mirawind/zenreply/releases/latest) 下载最新版本：
+前往 [Releases 页面](https://github.com/50829/zen-reply/releases/latest) 下载最新版本：
 
 - **Windows**：下载 `.exe`（NSIS 安装包）或 `.msi`
 - **macOS**：下载 `.dmg`
@@ -80,11 +79,12 @@ ZenReply 是一款运行在桌面端的 **AI 沟通辅助工具**，基于 Tauri
 ## 使用流程
 
 ```
+0. 双击exe，程序启动，保存在托盘
 1. 选中文字（或快捷键直接打开面板手动输入）
 2. Alt+Space  →  面板弹出，文本自动填入
 3. 选择沟通对象  →  按 1/2/3 或 4 输入自定义
 4. Enter  →  AI 流式生成回复
-5. Enter  →  写入剪贴板，窗口消失
+5. Enter  →  写入剪贴板，窗口消失，隐藏到系统托盘
 6. Ctrl+V  →  粘贴发送，完成。
 ```
 
@@ -110,7 +110,7 @@ ZenReply 是一款运行在桌面端的 **AI 沟通辅助工具**，基于 Tauri
 
 `Ctrl+,` 打开设置面板，填入你的服务商信息后点击「测试连接」验证，保存即可使用：
 
-<img src="docs/image/settings.png" width="70%" alt="设置面板">
+<img src="docs/image/settings.png" width="65%" alt="设置面板">
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
@@ -171,4 +171,4 @@ Tauri v2 (Rust) · React 19 · TypeScript · Vite · Tailwind CSS v4 · Framer M
 
 ## License
 
-MIT © 2026 mirawind
+MIT © 2026 Mirawind
