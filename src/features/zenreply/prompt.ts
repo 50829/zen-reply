@@ -39,13 +39,15 @@ function inferCustomStrategy(customRole: string): string {
   return "推断为平级/复杂对象：体面但有防御性，先确认事实，再给可执行方案（软钉子）。";
 }
 
+const ROLE_PREFIX = "你的身份是我的外脑嘴替，我会告诉你我想回复的信息和对方身份。请你深刻理解对方身份和中国社会的权力/人情结构，帮我把想说的话润色成一段可以直接发送的回复。";
+
 function buildRoleText(targetRole: TargetRole, customRoleInput: string): string {
   if (targetRole === "custom") {
     const safeCustomRole = customRoleInput.trim() || "未命名对象";
-    return `你的身份是我的外脑嘴替，现在我要回复一个特殊对象，Ta 的身份/设定是：【${safeCustomRole}】。`;
+    return `${ROLE_PREFIX}现在我要回复一个特殊对象，Ta 的身份/设定是：【${safeCustomRole}】。`;
   }
 
-  return `你的身份是我的外脑嘴替，现在我要回复我的【${PRESET_ROLE_LABEL[targetRole]}】。`;
+  return `${ROLE_PREFIX}现在我要回复我的【${PRESET_ROLE_LABEL[targetRole]}】。`;
 }
 
 function buildRoleStrategy(targetRole: TargetRole, customRoleInput: string): string {
@@ -63,7 +65,7 @@ export function buildPrompt({
   customRoleInput,
 }: BuildPromptParams): string {
   const safeRaw = rawText.trim() || "（无原始草稿）";
-  const safeContext = contextText?.trim() || "（无补充背景）";
+  const safeContext = contextText?.trim();
   const safeCustomRole = customRoleInput?.trim() || "";
 
   const roleText = buildRoleText(targetRole, safeCustomRole);
@@ -71,13 +73,11 @@ export function buildPrompt({
 
   return [
     roleText,
-    "请你深刻理解这个身份特征与中国社会的权力/人情结构。",
     roleStrategy,
     "",
     "用户的真实情绪/草稿是：",
     `“${safeRaw}”`,
-    "对方刚才说的话（可选背景）是：",
-    `“${safeContext}”`,
+    ...(safeContext ? ["对方刚才说的话（背景）是：", `"${safeContext}"`] : []),
     "",
     "任务要求：",
     "1) 清理所有情绪化、攻击性、粗口表达，只保留核心诉求。",
@@ -85,6 +85,7 @@ export function buildPrompt({
     "3) 先承接，再给动作，再给时间点/预期，不空喊口号。",
     "4) 长度 60~140 字，最多两句。",
     "5) 禁止输出解释、前言、标题、编号、引号包裹、额外换行。",
+    "6) 必须用中文输出，不论原文语种。",
     "",
     "直接输出最终回复正文。",
   ].join("\n");
@@ -97,27 +98,27 @@ type BuildTranslatePromptParams = {
   translateStyle: TranslateStyle;
 };
 
-const TRANSLATE_STYLE_INSTRUCTION: Record<TranslateStyle, string> = {
+const TRANSLATE_STYLE_INSTRUCTION: Record<TranslateStyle, string[]> = {
   formal: [
     "Register: formal written English, suitable for academic, legal, or official business contexts.",
     "Tone: objective, precise, and authoritative. Avoid contractions and colloquialisms.",
     "Vocabulary: prefer Latinate/formal vocabulary over everyday alternatives.",
-  ].join(" "),
+  ],
   casual: [
     "Register: natural conversational English, suitable for everyday communication.",
     "Tone: friendly, relaxed, and approachable. Contractions and phrasal verbs are encouraged.",
     "Vocabulary: plain, everyday words — keep it sounding like a real person talking.",
-  ].join(" "),
+  ],
   email: [
     "Register: professional email English, warm yet business-appropriate.",
     "Tone: polite, clear, and action-oriented. Use courteous openers/closers where natural.",
     "Structure: coherent flow, clear purpose — ready to copy directly into an email client.",
-  ].join(" "),
+  ],
   concise: [
     "Register: crisp, minimal English — cut every superfluous word.",
     "Tone: direct and confident. No filler phrases, no redundant context.",
     "Target length: as short as possible while preserving the full meaning.",
-  ].join(" "),
+  ],
 };
 
 export function buildTranslatePrompt({
@@ -125,21 +126,23 @@ export function buildTranslatePrompt({
   translateStyle,
 }: BuildTranslatePromptParams): string {
   const safeRaw = rawText.trim() || "（无输入内容）";
-  const styleInstruction = TRANSLATE_STYLE_INSTRUCTION[translateStyle];
+  const styleLines = TRANSLATE_STYLE_INSTRUCTION[translateStyle].map((l) => `- ${l}`);
 
   return [
     "You are an expert Chinese-to-English translator with deep knowledge of both languages and cultural nuances.",
     "",
-    `Style requirements: ${styleInstruction}`,
+    "Style requirements:",
+    ...styleLines,
     "",
-    "The Chinese text to translate is:",
+    "The text to translate is:",
     `"${safeRaw}"`,
     "",
     "Translation requirements:",
     "1) Preserve the complete meaning and intent of the original text.",
     "2) Adapt cultural expressions naturally — do not translate idioms word-for-word.",
-    "3) Apply the specified style consistently throughout the translation.",
-    "4) Output the translation only — no explanations, no labels, no quotation marks, no extra line breaks.",
+    "3) Preserve proper nouns, brand names, and technical terms as-is.",
+    "4) Apply the specified style consistently throughout the translation.",
+    "5) Output the translation only — no explanations, no labels, no quotation marks, no extra line breaks.",
     "",
     "Output the final English translation directly.",
   ].join("\n");
