@@ -20,7 +20,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 10.4.1
 
       - uses: actions/setup-node@v4
         with:
@@ -50,7 +50,8 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            libxdo-dev
 
       - uses: dtolnay/rust-toolchain@stable
         with:
