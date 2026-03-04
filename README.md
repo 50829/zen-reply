@@ -3,13 +3,8 @@
 > **把你想说的话，变成你该说的话。**
 
 [![Release](https://img.shields.io/github/v/release/mirawind/zenreply?style=flat-square)](https://github.com/mirawind/zenreply/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-Windows-blue?style=flat-square)](#下载安装)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square)](#下载安装)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-
----
-
-<!-- 在此处插入截图 -->
-<!-- ![ZenReply 主界面](assets/screenshot.png) -->
 
 ---
 
@@ -22,7 +17,7 @@
 **ZenReply 是专门为这些时刻设计的。**  
 它不替你做决定，只帮你把情绪化的草稿变成你真正想表达的样子——体面、清晰、一键可发。
 
-ZenReply 是一款运行在 Windows 桌面的 **AI 沟通辅助工具**，基于 Tauri v2 构建。  
+ZenReply 是一款运行在桌面端的 **AI 沟通辅助工具**，基于 Tauri v2 构建。  
 选中任意文字，按下快捷键，几秒钟内获得一条可直接发送的高情商回复。不切换应用，不泄漏数据，完全本地运行。
 
 ---
@@ -30,9 +25,11 @@ ZenReply 是一款运行在 Windows 桌面的 **AI 沟通辅助工具**，基于
 ## 核心功能
 
 ### ⚡ 一键唤醒，零打断
+
 在任意应用（微信、飞书、钉钉、浏览器…）中选中文字，按 `Alt+Space`，ZenReply 自动捕获文本并弹出面板。无需复制、无需切换窗口。
 
 ### 🎭 角色化策略润色
+
 根据沟通对象的不同，采用完全不同的语气与策略：
 
 | 对象 | 策略 |
@@ -42,16 +39,29 @@ ZenReply 是一款运行在 Windows 桌面的 **AI 沟通辅助工具**，基于
 | 💌 **恋爱对象** | 传递温度与情绪价值，保持自我边界，避免控制感与说教 |
 | ✏️ **自定义** | 输入任意身份，自动推断上位/亲密/平级关系套用策略 |
 
+使用数字快捷键选定沟通对象后，可输入对方刚才说的话作为背景上下文，也可以不输入，随后点击`Enter`键「生成回复」，AI 流式生成结果，确认后按`Enter`一键写入剪贴板，面板自动关闭，`Ctrl+V`直接粘贴发送：
+
+| 输入面板 | 生成结果 |
+|-------------|------------|
+| ![回复模式 — 输入面板](docs/image/reply-1.png) | ![回复模式 — 生成结果](docs/image/reply-2.png) |
+
 ### 🌐 英文翻译模式
-`Alt+2` 切换到翻译模式，支持正式 / 轻松 / 邮件 / 简洁四种英文风格，中英职场沟通全覆盖。
+
+`Alt+2` 切换到翻译模式，支持正式 / 轻松 / 邮件 / 简洁四种英文风格，中英职场沟通全覆盖：
+
+| 输入面板 | 生成结果 |
+|-------------|------------|
+|![翻译模式 — 输入面板](docs/image/translate1.png) | ![翻译模式 — 翻译结果](docs/image/translate2.png)|
 
 ### 🔒 隐私优先
+
 - **不上传原文**：文本仅用于本地构建 Prompt，发送给你自己配置的 AI 服务商。
 - **不强制代发**：生成结果写入剪贴板，你决定是否发送。
 - **API Key 本地存储**：密钥仅保存在本机，不经过任何第三方服务器。
 
 ### 🖥️ 系统托盘常驻
-关闭窗口后隐藏到系统托盘，不占任务栏。随时右键唤醒或直接退出。
+
+按`Esc`键关闭窗口后隐藏到系统托盘，不占任务栏。随时右键唤醒或直接退出。
 
 ---
 
@@ -60,6 +70,8 @@ ZenReply 是一款运行在 Windows 桌面的 **AI 沟通辅助工具**，基于
 前往 [Releases 页面](https://github.com/mirawind/zenreply/releases/latest) 下载最新版本：
 
 - **Windows**：下载 `.exe`（NSIS 安装包）或 `.msi`
+- **macOS**：下载 `.dmg`
+- **Linux**：下载 `.deb` 或 `.AppImage`
 
 > 首次运行需要在设置中填写你的 AI API Key。支持 SiliconFlow、OpenAI、DeepSeek 等任意 OpenAI 兼容接口。
 
@@ -68,7 +80,7 @@ ZenReply 是一款运行在 Windows 桌面的 **AI 沟通辅助工具**，基于
 ## 使用流程
 
 ```
-1. 选中文字（或直接打开面板手动输入）
+1. 选中文字（或快捷键直接打开面板手动输入）
 2. Alt+Space  →  面板弹出，文本自动填入
 3. 选择沟通对象  →  按 1/2/3 或 4 输入自定义
 4. Enter  →  AI 流式生成回复
@@ -85,9 +97,8 @@ ZenReply 是一款运行在 Windows 桌面的 **AI 沟通辅助工具**，基于
 | `Alt+Space` | 唤醒面板（全局） |
 | `Alt+1` | 切换到回复模式 |
 | `Alt+2` | 切换到翻译模式 |
-| `1` / `2` / `3` | 选择预设对象（回复模式） |
-| `1` / `2` / `3` / `4` | 选择翻译风格（翻译模式） |
-| `4` | 进入自定义对象输入 |
+| `1` / `2` / `3` | 选择预设对象（回复模式）/ 选择翻译风格（翻译模式） |
+| `4` | 进入自定义对象输入（回复模式）/ 简洁风格（翻译模式） |
 | `Enter` | 开始生成 / 确认并复制 |
 | `Esc` | 关闭设置 / 终止会话 |
 | `Ctrl+,` | 打开 / 关闭设置面板 |
@@ -97,20 +108,22 @@ ZenReply 是一款运行在 Windows 桌面的 **AI 沟通辅助工具**，基于
 
 ## 配置 API
 
-`Ctrl+,` 打开设置面板，填入：
+`Ctrl+,` 打开设置面板，填入你的服务商信息后点击「测试连接」验证，保存即可使用：
 
-- **API Key**：你的服务商密钥
-- **API Base URL**：默认 `https://api.siliconflow.cn/v1`，支持任意 OpenAI 兼容接口
-- **模型名称**：默认 `Pro/MiniMaxAI/MiniMax-M2.5`
+![设置面板](docs/image/settings.png)
 
-点击「测试连接」验证配置，保存后即可使用。
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| **API Key** | — | 你的服务商密钥 |
+| **API Base URL** | `https://api.siliconflow.cn/v1` | 支持任意 OpenAI 兼容接口 |
+| **模型名称** | `Pro/MiniMaxAI/MiniMax-M2.5` | 填写服务商提供的模型 ID |
 
 ---
 
 ## 常见问题
 
 **按 `Alt+Space` 后文本没有填入？**  
-ZenReply 会先快速捕获（约 87ms），再启动兜底轮询（适配微信等慢速应用）。若仍失败，可手动将文字粘贴到输入框，再按 `Enter` 生成。
+ZenReply 会先快速捕获（约 130ms），若失败可手动将文字粘贴到输入框，再按 `Enter` 生成。
 
 **窗口关闭后程序退出了？**  
 正常情况关闭窗口只是隐藏到系统托盘。如需完全退出，右键托盘图标 → 退出程序。
@@ -150,11 +163,10 @@ Tauri v2 (Rust) · React 19 · TypeScript · Vite · Tailwind CSS v4 · Framer M
 
 ## 后续计划
 
-- [ ] 多 Provider 一键切换预设
+- [ ] Prompt 优化与调参调参（温度、输出长度）
+- [ ] 自定义快捷键设置
+- [ ] 自定义人物预设与切换
 - [ ] 历史记录与二次润色
-- [ ] macOS 正式支持与验证
-- [ ] Prompt 调参（温度、输出长度）
-
 ---
 
 ## License

@@ -3,7 +3,7 @@
 项目技术规范（核心）
 
 状态：Active  
-更新时间：2026-03-01  
+更新时间：2026-03-04  
 适用范围：本仓库全部代码（`src/`、`src-tauri/`、配置文件、脚本、文档）  
 规范级别：`MUST`（强制） / `SHOULD`（建议） / `MAY`（可选）
 
@@ -58,7 +58,7 @@
 │  ┌─────────────── Rust Backend ─────────────────────┐  │
 │  │ lib.rs                                            │  │
 │  │   ├── on_shortcut_pressed  (异步线程，快捷键唤醒) │  │
-│  │   ├── quick_capture / fallback_capture            │  │
+│  │   ├── quick_capture        (模拟 Ctrl+C 获取选区) │  │
 │  │   ├── hide_window / show_window (Tauri commands)  │  │
 │  │   ├── test_api_connection   (Tauri command)       │  │
 │  │   └── TrayIconBuilder       (系统托盘)            │  │
@@ -88,7 +88,6 @@ Rust → React 通过 Tauri `emit`，React → Rust 通过 `invoke`。
 | 事件名 | 方向 | 含义 |
 |---|---|---|
 | `zenreply://clipboard-text` | Rust → React | 快捷键唤醒，payload 含已捕获文本（可能为空） |
-| `zenreply://clipboard-captured` | Rust → React | 兜底捕获成功后补发，仅补填文本不重置 UI |
 | `zenreply://tray-wake` | Rust → React | 托盘「打开主面板」点击 |
 | `zenreply://tray-open-settings` | Rust → React | 托盘「打开设置」点击 |
 
@@ -138,19 +137,14 @@ Alt+Space Released
         ├── 1. 读取剪贴板（记录 previous）
         ├── 2. sleep 30ms（等待 OS 处理按键释放）
         ├── 3. enigo Ctrl+C（模拟复制）
-        ├── 4. sleep 50ms（等待源应用处理复制）
+        ├── 4. sleep 100ms（等待源应用处理复制）
   ├── 5. 读取剪贴板（对比 previous，得到 text）
-  │      总耗时 ~87ms
+  │      总耗时 ~130ms
   │
-  ├── 6. emit("zenreply://clipboard-text", { text })
-  │      前端收到后：onWake(text) → 状态重置 + 文本填入
-  │      前端在 useAutoResizeWindow 测量完成后调用 show_window
-  │      （不在 Rust 侧 show，避免透明壳闪烁）
-  │
-  └── 7. if text.is_empty():
-           fallback_capture（再次 Ctrl+C + 轮询 10×30ms）
-           成功后 emit("zenreply://clipboard-captured", { text })
-           前端收到后：仅 setRawText(text)，不重置 UI
+  └── 6. emit("zenreply://clipboard-text", { text })
+         前端收到后：onWake(text) → 状态重置 + 文本填入
+         前端在 useAutoResizeWindow 测量完成后调用 show_window
+         （不在 Rust 侧 show，避免透明壳闪烁）
 ```
 
 ### 4.3 前端唤醒规范
@@ -158,7 +152,7 @@ Alt+Space Released
 - `MUST` FlipCard 仅在 `isAwake === true` 时渲染
 - `MUST` `isAwake` 初始为 `false`，`onWake` 设为 `true`，`resetFlow` 设为 `false`
 - `MUST` 收到 `clipboard-text` 事件时调用 `onWake(text)`——重置所有状态 + 填入文本
-- `MUST` 收到 `clipboard-captured` 事件时仅调用 `setRawText(text)`——不重置 UI
+- `MUST` 文本为空时不阻止唤醒，面板正常弹出，用户可手动输入
 
 ### 4.4 动画规范
 

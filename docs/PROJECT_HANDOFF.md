@@ -1,7 +1,7 @@
 # ZenReply 项目开发交接文档
 
-更新时间：2026-03-01  
-版本：v0.1.0  
+更新时间：2026-03-04  
+版本：v0.1.1  
 适用对象：下一窗口/下一位协作者快速接手开发与发布
 
 ---
@@ -109,7 +109,6 @@ src-tauri/
 | 托盘菜单动态更新 | `update_tray_menu` 根据面板可见性切换菜单项 |
 | show_window 合并 IPC | `show_window` 命令：resize+center+show+focus 单次调用 |
 | 选区捕获异步化 | `on_shortcut_pressed` 在独立线程执行，不阻塞事件循环 |
-| 兜底异步捕获 | `fallback_capture` 轮询适配慢速应用（如 Electron）|
 
 ---
 
@@ -126,11 +125,11 @@ Alt+Space Released
         ├── 2. sleep 30ms（等待 OS 处理按键释放）
         ├── 3. enigo Ctrl+C（模拟复制）
         ├── 4. sleep 100ms（等待源应用处理复制）
-        ├── 5. 读取剪贴板 -> 对比 previous，得到 text（约 137ms）
+        ├── 5. 读取剪贴板 -> 对比 previous，得到 text（约 130ms）
         |
-        ├── 6. emit("zenreply://clipboard-text", { text })
-        |      前端收到后：onWake(text) -> 状态重置 + 文本填入
-        |      前端在 useAutoResizeWindow 测量完成后调用 show_window
+        └── 6. emit("zenreply://clipboard-text", { text })
+               前端收到后：onWake(text) -> 状态重置 + 文本填入
+               前端在 useAutoResizeWindow 测量完成后调用 show_window
 
 ```
 
@@ -149,8 +148,7 @@ Alt+Space Released
 
 | 名称 | 方向 | 触发时机 |
 |---|---|---|
-| `zenreply://clipboard-text` | Rust -> React | 快捷键触发，携带捕获到的文本 |
-| `zenreply://clipboard-captured` | Rust -> React | 兜底捕获成功，仅补填文本 |
+| `zenreply://clipboard-text` | Rust -> React | 快捷键触发，携带捕获到的文本（文本为空时前端仍弹出面板供手动输入）|
 | `zenreply://tray-wake` | Rust -> React | 托盘「打开主面板」点击 |
 | `zenreply://tray-open-settings` | Rust -> React | 托盘「打开设置」点击 |
 | `hide_window` | React -> Rust | 会话结束/Esc |
