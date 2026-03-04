@@ -68,7 +68,7 @@ ZenReply 是一款运行在桌面端的 **AI 沟通辅助工具**，基于 Tauri
 
 前往 [Releases 页面](https://github.com/50829/zen-reply/releases/latest) 下载最新版本：
 
-- **Windows**：下载 `.exe`（NSIS 安装包）或 `.msi`
+- **Windows**：下载 `.exe`（NSIS 安装包）或 `.msi`。推荐下载[纯净版](https://github.com/50829/zen-reply/releases/download/v0.1.1/ZenReply_v0.1.1_x64.exe)
 - **macOS**：下载 `.dmg`
 - **Linux**：下载 `.deb` 或 `.AppImage`
 
