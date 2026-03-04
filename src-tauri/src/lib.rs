@@ -193,10 +193,7 @@ fn quick_capture<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> String {
 }
 
 
-fn on_shortcut_pressed<R: tauri::Runtime>(app: &tauri::AppHandle<R>)
-where
-    R: 'static,
-{
+fn on_shortcut_pressed<R: tauri::Runtime + 'static>(app: &tauri::AppHandle<R>) {
     // Panel is now being activated — show minimal tray menu immediately.
     update_tray_menu(app, true);
 
