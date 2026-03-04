@@ -42,16 +42,16 @@ ZenReply 是一款运行在桌面端的 **AI 沟通辅助工具**，基于 Tauri
 使用数字快捷键选定沟通对象后，可输入对方刚才说的话作为背景上下文，也可以不输入，随后点击`Enter`键「生成回复」，AI 流式生成结果，确认后按`Enter`一键写入剪贴板，面板自动关闭，`Ctrl+V`直接粘贴发送：
 
 | 输入面板 | 生成结果 |
-|-------------|------------|
-| ![回复模式 — 输入面板](docs/image/reply-1.png) | ![回复模式 — 生成结果](docs/image/reply-2.png) |
+|---|---|
+| <img src="docs/image/reply-1.png" width="100%" alt="回复模式 — 输入面板"> | <img src="docs/image/reply-2.png" width="100%" alt="回复模式 — 生成结果"> |
 
 ### 🌐 英文翻译模式
 
 `Alt+2` 切换到翻译模式，支持正式 / 轻松 / 邮件 / 简洁四种英文风格，中英职场沟通全覆盖：
 
 | 输入面板 | 生成结果 |
-|-------------|------------|
-|![翻译模式 — 输入面板](docs/image/translate1.png) | ![翻译模式 — 翻译结果](docs/image/translate2.png)|
+|---|---|
+| <img src="docs/image/translate1.png" width="100%" alt="翻译模式 — 输入面板"> | <img src="docs/image/translate2.png" width="100%" alt="翻译模式 — 翻译结果"> |
 
 ### 🔒 隐私优先
 
@@ -110,7 +110,7 @@ ZenReply 是一款运行在桌面端的 **AI 沟通辅助工具**，基于 Tauri
 
 `Ctrl+,` 打开设置面板，填入你的服务商信息后点击「测试连接」验证，保存即可使用：
 
-![设置面板](docs/image/settings.png)
+<img src="docs/image/settings.png" width="70%" alt="设置面板">
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
